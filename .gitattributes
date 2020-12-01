@@ -1,2 +1,4 @@
 # Set the default behaviour to keep LF as line ending
 * text eol=lf
+
+*.png    binary
