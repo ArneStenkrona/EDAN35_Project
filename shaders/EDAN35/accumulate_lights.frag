@@ -24,6 +24,6 @@ layout (location = 1) out vec4 light_specular_contribution;
 
 void main()
 {
-	light_diffuse_contribution  = vec4(0.0, 0.0, 0.0, 1.0);
-	light_specular_contribution = vec4(0.0, 0.0, 0.0, 1.0);
+	light_diffuse_contribution  = vec4(1.0, 1.0, 1.0, 1.0);
+	light_specular_contribution = vec4(1.0, 1.0, 1.0, 1.0);
 }

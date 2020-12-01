@@ -28,7 +28,7 @@ void main()
 		discard;
 
 	// Diffuse color
-	geometry_diffuse = vec4(1.0f);
+	geometry_diffuse = vec4(0.0f);
 	if (has_diffuse_texture)
 		geometry_diffuse = texture(diffuse_texture, fs_in.texcoord);
 
@@ -41,14 +41,14 @@ void main()
 	vec3 normal;
 
 	if (has_normals_texture) {
-		vec3 t = (normal_model_to_world * vec4(normalize(fs_in.tangent), 0.0)).xyz;
-		vec3 b = (normal_model_to_world * vec4(normalize(fs_in.binormal), 0.0)).xyz;
-		vec3 n = (normal_model_to_world * vec4(normalize(fs_in.normal), 0.0)).xyz;
+		vec3 t = normalize(fs_in.tangent);
+		vec3 b = normalize(fs_in.binormal);
+		vec3 n = normalize(fs_in.normal);
 		mat3 tbn = mat3(t, b, n);
 		vec3 textureNormal = (texture(normals_texture, fs_in.texcoord).xyz * 2.0) - 1.0;
-		normal = normalize(tbn * textureNormal);
+		normal = vec3(1.0,0,0); //normalize(tbn * textureNormal);
 	} else {
-		normal = (normal_model_to_world * vec4(fs_in.normal, 0.0)).xyz;
+		normal = fs_in.normal;
 	}
 	geometry_normal.xyz = (normal + 1.0) / 2.0;
 }

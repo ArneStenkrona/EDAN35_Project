@@ -101,7 +101,7 @@ project::Project::run()
 		LogError("Failed to load the ball model");
 		return;
 	}
-	std::vector<std::vector<bonobo::mesh_data>> objects = { water , floor, ball };
+	std::vector<std::vector<bonobo::mesh_data>> objects = { floor , water, ball };
 
 #if 0
 	std::vector<bonobo::mesh_data> meshes = { parametric_shapes::createQuad(10 * constant::scale_lengths, 10 * constant::scale_lengths, 1, 1), /* floor */
@@ -109,15 +109,16 @@ project::Project::run()
 											  parametric_shapes::createSphere(16,32, 0.5 * constant::scale_lengths) /* beach ball */ };
 #endif
 
-	std::vector<glm::vec3> translations = { { 0.0f, -1.0f, 0.0f }, /* floor */
+	std::vector<glm::vec3> translations = { { 0.0f, -1.0f * constant::scale_lengths, 0.0f }, /* floor */
 											{ 0.0f, 0.0f, 0.0f }, /* water */
-											{ 0.0f, -0.5f, 0.0f } /* beach ball */ };
+											{ 0.0f, -0.5f * constant::scale_lengths, 0.0f } /* beach ball */ };
 
     std::vector<Node> scene;
     for (size_t i = 0; i < objects.size(); ++i) {
 		for (size_t j = 0; j < objects[i].size(); ++j) {
 			Node node;
 			node.get_transform().SetTranslate(translations[i]);
+            node.get_transform().Scale(constant::scale_lengths);
 			node.set_geometry(objects[i][j]);
 			scene.push_back(node);
 		}
