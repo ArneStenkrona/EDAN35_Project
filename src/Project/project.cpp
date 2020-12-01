@@ -85,20 +85,42 @@ project::Project::run()
 	//    node.set_geometry(shape);
 	//    sponza_elements.push_back(node);
 	//}
+
+	auto const water = bonobo::loadObjects(config::resources_path("models/water/water.obj"));
+	if (water.empty()) {
+		LogError("Failed to load the water model");
+		return;
+	}
+	auto const floor = bonobo::loadObjects(config::resources_path("models/floor/floor.obj"));
+	if (floor.empty()) {
+		LogError("Failed to load the floor model");
+		return;
+	}
+	auto const ball = bonobo::loadObjects(config::resources_path("models/ball/ball.obj"));
+	if (ball.empty()) {
+		LogError("Failed to load the ball model");
+		return;
+	}
+	std::vector<std::vector<bonobo::mesh_data>> objects = { water , floor, ball };
+
+#if 0
 	std::vector<bonobo::mesh_data> meshes = { parametric_shapes::createQuad(10 * constant::scale_lengths, 10 * constant::scale_lengths, 1, 1), /* floor */
 											  parametric_shapes::createQuad(10 * constant::scale_lengths, 10 * constant::scale_lengths, 1, 1), /* water */
-											  parametric_shapes::createSphere(16,32, 0.1) /* beach ball */ };
+											  parametric_shapes::createSphere(16,32, 0.5 * constant::scale_lengths) /* beach ball */ };
+#endif
 
-	std::vector<glm::vec3> translations = { { 0.0f, -1.0f * constant::scale_lengths, 0.0f }, /* floor */
+	std::vector<glm::vec3> translations = { { 0.0f, -1.0f, 0.0f }, /* floor */
 											{ 0.0f, 0.0f, 0.0f }, /* water */
-											{ 0.0f, -0.5f * constant::scale_lengths, 0.0f } /* beach ball */ };
+											{ 0.0f, -0.5f, 0.0f } /* beach ball */ };
 
     std::vector<Node> scene;
-    for (size_t i = 0; i < meshes.size(); ++i) {
-        Node node;
-		node.get_transform().SetTranslate(translations[i]);
-        node.set_geometry(meshes[i]);
-        scene.push_back(node);
+    for (size_t i = 0; i < objects.size(); ++i) {
+		for (size_t j = 0; j < objects[i].size(); ++j) {
+			Node node;
+			node.get_transform().SetTranslate(translations[i]);
+			node.set_geometry(objects[i][j]);
+			scene.push_back(node);
+		}
     }
 
     //auto const cone_geometry = loadCone();
