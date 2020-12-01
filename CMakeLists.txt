@@ -66,10 +66,6 @@ include (CMake/InstallTinyFileDialogs.cmake)
 # stb is used for loading in image files.
 include (CMake/InstallSTB.cmake)
 
-# Resources are found in an external archive
-include (CMake/RetrieveResourceArchive.cmake)
-
-
 # Configure *C++ Environment Variables*
 set (MSAA_RATE "1" CACHE STRING "Window MSAA rate")
 set (WIDTH "1600" CACHE STRING "Window width")
@@ -139,8 +135,9 @@ endfunction ()
 
 add_subdirectory ("${CMAKE_SOURCE_DIR}/src/external")
 add_subdirectory ("${CMAKE_SOURCE_DIR}/src/core")
-add_subdirectory ("${CMAKE_SOURCE_DIR}/src/EDAF80")
 add_subdirectory ("${CMAKE_SOURCE_DIR}/src/EDAN35")
+add_subdirectory ("${CMAKE_SOURCE_DIR}/src/Common")
+add_subdirectory ("${CMAKE_SOURCE_DIR}/src/Project")
 
 install (DIRECTORY ${CMAKE_SOURCE_DIR}/shaders DESTINATION bin)
 install (DIRECTORY ${CMAKE_SOURCE_DIR}/res DESTINATION bin)
