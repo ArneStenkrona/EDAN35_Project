@@ -85,13 +85,13 @@ project::Project::run()
 	//    node.set_geometry(shape);
 	//    sponza_elements.push_back(node);
 	//}
-	std::vector<bonobo::mesh_data> meshes = { parametric_shapes::createQuad(10, 10, 1, 1), /* floor */
-											  parametric_shapes::createQuad(10, 10, 1, 1), /* water */
+	std::vector<bonobo::mesh_data> meshes = { parametric_shapes::createQuad(10 * constant::scale_lengths, 10 * constant::scale_lengths, 1, 1), /* floor */
+											  parametric_shapes::createQuad(10 * constant::scale_lengths, 10 * constant::scale_lengths, 1, 1), /* water */
 											  parametric_shapes::createSphere(16,32, 0.1) /* beach ball */ };
 
-	std::vector<glm::vec3> translations = { { 0.0f, -1.0f, 0.0f }, /* floor */
+	std::vector<glm::vec3> translations = { { 0.0f, -1.0f * constant::scale_lengths, 0.0f }, /* floor */
 											{ 0.0f, 0.0f, 0.0f }, /* water */
-											{ 0.0f, -0.5f, 0.0f } /* beach ball */ };
+											{ 0.0f, -0.5f * constant::scale_lengths, 0.0f } /* beach ball */ };
 
     std::vector<Node> scene;
     for (size_t i = 0; i < meshes.size(); ++i) {
@@ -338,7 +338,7 @@ project::Project::run()
             int framebuffer_width, framebuffer_height;
             glfwGetFramebufferSize(window, &framebuffer_width, &framebuffer_height);
             glViewport(0, 0, framebuffer_width, framebuffer_height);
-            glClear(GL_DEPTH_BUFFER_BIT);
+            glClear(GL_DEPTH_BUFFER_BIT | GL_COLOR_BUFFER_BIT);
             // XXX: Is any other clearing needed?
 
             GLStateInspection::CaptureSnapshot("Filling Pass");
@@ -361,6 +361,7 @@ project::Project::run()
             glDrawBuffers(2, light_draw_buffers);
             glViewport(0, 0, framebuffer_width, framebuffer_height);
             // XXX: Is any clearing needed?
+			glClear(GL_COLOR_BUFFER_BIT);
             //for (size_t i = 0; i < static_cast<size_t>(lights_nb); ++i) {
             //auto& lightTransform = lightTransforms[i];
             //lightTransform.SetRotate(seconds_nb * 0.1f + i * 1.57f, glm::vec3(0.0f, 1.0f, 0.0f));
@@ -381,7 +382,7 @@ project::Project::run()
             glBindFramebuffer(GL_FRAMEBUFFER, shadowmap_fbo);
             glViewport(0, 0, constant::shadowmap_res_x, constant::shadowmap_res_y);
             // XXX: Is any clearing needed?
-
+			glClear(GL_DEPTH_BUFFER_BIT);
             GLStateInspection::CaptureSnapshot("Shadow Map Generation");
 
             for (auto const& element : scene)
@@ -409,6 +410,7 @@ project::Project::run()
             glUseProgram(accumulate_lights_shader);
             glViewport(0, 0, framebuffer_width, framebuffer_height);
             // XXX: Is any clearing needed?
+
 
             auto const spotlight_set_uniforms = [framebuffer_width, framebuffer_height, this, &light_matrix, &sunColor, &lightTransform](GLuint program) {
                 glUniform2f(glGetUniformLocation(program, "inv_res"),

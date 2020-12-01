@@ -309,7 +309,7 @@ edan35::Assignment2::run()
 			int framebuffer_width, framebuffer_height;
 			glfwGetFramebufferSize(window, &framebuffer_width, &framebuffer_height);
 			glViewport(0, 0, framebuffer_width, framebuffer_height);
-			glClear(GL_DEPTH_BUFFER_BIT);
+			glClear(GL_DEPTH_BUFFER_BIT | GL_COLOR_BUFFER_BIT);
 			// XXX: Is any other clearing needed?
 
 			GLStateInspection::CaptureSnapshot("Filling Pass");
@@ -332,6 +332,7 @@ edan35::Assignment2::run()
 			glDrawBuffers(2, light_draw_buffers);
 			glViewport(0, 0, framebuffer_width, framebuffer_height);
 			// XXX: Is any clearing needed?
+			glClear(GL_COLOR_BUFFER_BIT);
 			for (size_t i = 0; i < static_cast<size_t>(lights_nb); ++i) {
 				auto& lightTransform = lightTransforms[i];
 				lightTransform.SetRotate(seconds_nb * 0.1f + i * 1.57f, glm::vec3(0.0f, 1.0f, 0.0f));
@@ -349,6 +350,8 @@ edan35::Assignment2::run()
 				glBindFramebuffer(GL_FRAMEBUFFER, shadowmap_fbo);
 				glViewport(0, 0, constant::shadowmap_res_x, constant::shadowmap_res_y);
 				// XXX: Is any clearing needed?
+				glClear(GL_DEPTH_BUFFER_BIT);
+
 
 				GLStateInspection::CaptureSnapshot("Shadow Map Generation");
 

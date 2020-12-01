@@ -28,7 +28,7 @@ void main()
 		discard;
 
 	// Diffuse color
-	geometry_diffuse = vec4(0.0f);
+	geometry_diffuse = vec4(1.0f);
 	if (has_diffuse_texture)
 		geometry_diffuse = texture(diffuse_texture, fs_in.texcoord);
 
