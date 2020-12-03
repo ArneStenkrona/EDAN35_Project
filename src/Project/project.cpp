@@ -99,7 +99,8 @@ project::Project::run()
 		LogError("Failed to load the ball model");
 		return;
 	}
-	std::vector<std::vector<bonobo::mesh_data>> objects = { floor , water, ball };
+	std::vector<std::vector<bonobo::mesh_data>> solid_objects = { floor , ball };
+    std::vector<std::vector<bonobo::mesh_data>> trans_objects = { water };
 
 #if 0
 	std::vector<bonobo::mesh_data> meshes = { parametric_shapes::createQuad(10 * constant::scale_lengths, 10 * constant::scale_lengths, 1, 1), /* floor */
@@ -107,21 +108,30 @@ project::Project::run()
 											  parametric_shapes::createSphere(16,32, 0.5 * constant::scale_lengths) /* beach ball */ };
 #endif
 
-	std::vector<glm::vec3> translations = { { 0.0f, -1.0f * constant::scale_lengths, 0.0f }, /* floor */
-											{ 0.0f, 0.0f, 0.0f }, /* water */
-											{ 0.0f, -0.5f * constant::scale_lengths, 0.0f } /* beach ball */ };
+	std::vector<glm::vec3> solid_translations = { { 0.0f, -1.0f * constant::scale_lengths, 0.0f }, /* floor */
+											    { 0.0f, 1.0f * constant::scale_lengths, 0.0f } /* beach ball */ };
+    std::vector<glm::vec3> trans_translations = { { 0.0f, 0.0f, 0.0f }, /* water */ };
 
-    std::vector<Node> scene;
-    for (size_t i = 0; i < objects.size(); ++i) {
-		for (size_t j = 0; j < objects[i].size(); ++j) {
+    std::vector<Node> solids;
+    for (size_t i = 0; i < solid_objects.size(); ++i) {
+		for (size_t j = 0; j < solid_objects[i].size(); ++j) {
 			Node node;
-			node.get_transform().SetTranslate(translations[i]);
+			node.get_transform().SetTranslate(solid_translations[i]);
             node.get_transform().Scale(constant::scale_lengths);
-			node.set_geometry(objects[i][j]);
-			scene.push_back(node);
+			node.set_geometry(solid_objects[i][j]);
+            solids.push_back(node);
 		}
     }
-
+    std::vector<Node> transparants;
+    for (size_t i = 0; i < trans_objects.size(); ++i) {
+        for (size_t j = 0; j < trans_objects[i].size(); ++j) {
+            Node node;
+            node.get_transform().SetTranslate(trans_translations[i]);
+            node.get_transform().Scale(constant::scale_lengths);
+            node.set_geometry(trans_objects[i][j]);
+            transparants.push_back(node);
+        }
+    }
 
     const float shadow_width = 10;
     auto const ortho_box = parametric_shapes::createCube(1.0);
@@ -373,8 +383,10 @@ project::Project::run()
 
             GLStateInspection::CaptureSnapshot("Filling Pass");
 
-            for (auto const& element : scene)
+            for (auto const& element : solids)
                 element.render(mCamera.GetWorldToClipMatrix(), element.get_transform().GetMatrix(), fill_gbuffer_shader, set_uniforms);
+            //for (auto const& element : transparants)
+            //    element.render(mCamera.GetWorldToClipMatrix(), element.get_transform().GetMatrix(), fill_gbuffer_shader, set_uniforms);
             if (utils::opengl::debug::isSupported())
             {
                 glPopDebugGroup();
@@ -414,7 +426,7 @@ project::Project::run()
 			glClear(GL_DEPTH_BUFFER_BIT);
             GLStateInspection::CaptureSnapshot("Shadow Map Generation");
 
-            for (auto const& element : scene)
+            for (auto const& element : solids)
                 element.render(light_matrix, glm::mat4(1.0f), fill_shadowmap_shader, set_uniforms);
             if (utils::opengl::debug::isSupported())
             {

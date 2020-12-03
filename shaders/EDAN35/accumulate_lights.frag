@@ -54,9 +54,6 @@ void main()
 	// Used for cutoff angle.
 	float cosSigma = dot(normalize(-light_direction), l); 
 
-	// blending, falling quadratically with the squared distance from 1 -> 0.
-	float distanceFalloff  = 1.0 / dot(dist, dist);
-
 	float diffuse = cosTheta;
 	float specular = max(pow(dot(r,v), 100), 0); // QUESTION: Where is the specular map integrated?
 
@@ -94,7 +91,7 @@ void main()
 	if (shadowMultiplier < 0.05)
 		shadowMultiplier = 0;
 
-	vec4 lightColour = shadowMultiplier * light_intensity * distanceFalloff * vec4(light_color, 1.0);
+	vec4 lightColour = shadowMultiplier * light_intensity * vec4(light_color, 1.0);
 
 	if (true) 
 	{
