@@ -301,6 +301,7 @@ project::Project::run()
 
 	TRSTransformf lightTransform;
     lightTransform.SetTranslate(-sunDir);
+
     // UP is z as up is seen from the perspective of an image on the XY plane
     lightTransform.LookAt(glm::vec3{ 0.0f,0.0f,0.0f }, glm::vec3{ 0.0f,0.0f,1.0f });
 

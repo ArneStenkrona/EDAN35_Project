@@ -35,13 +35,11 @@ void main()
 
 	
 	vec3 p = worldPos.xyz;
-	vec3 light_position = p - normalize(light_direction) * 1000;
-	vec3 dist = light_position - p;
 
 	// Where direction only matters.
 	vec3 n = normalize(normal);
 	vec3 v = normalize(camera_position - p);
-	vec3 l = normalize(dist);
+	vec3 l = normalize(-light_direction);
 	vec3 r = normalize(reflect(-l, n));
 
 	// cosAngle between the direction towards the light, and the direction of the light negative
