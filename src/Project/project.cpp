@@ -32,6 +32,9 @@ namespace constant
     constexpr uint32_t shadowmap_res_x = 1024;
     constexpr uint32_t shadowmap_res_y = 1024;
 
+    constexpr uint32_t environmentmap_res_x = 1024;
+    constexpr uint32_t environmentmap_res_y = 1024;
+
     constexpr float  scale_lengths = 100.0f; // The scene is expressed in centimetres rather than metres, hence the x100.
 
     //constexpr size_t lights_nb = 1;
@@ -101,7 +104,7 @@ project::Project::run()
 		LogError("Failed to load the ball model");
 		return;
 	}
-	std::vector<std::vector<bonobo::mesh_data>> objects = { floor , water, ball };
+	std::vector<std::vector<bonobo::mesh_data>> objects = { floor, ball, water };
 
 #if 0
 	std::vector<bonobo::mesh_data> meshes = { parametric_shapes::createQuad(10 * constant::scale_lengths, 10 * constant::scale_lengths, 1, 1), /* floor */
@@ -109,9 +112,9 @@ project::Project::run()
 											  parametric_shapes::createSphere(16,32, 0.5 * constant::scale_lengths) /* beach ball */ };
 #endif
 
-	std::vector<glm::vec3> translations = { { 0.0f, -1.0f * constant::scale_lengths, 0.0f }, /* floor */
-											{ 0.0f, 0.0f, 0.0f }, /* water */
-											{ 0.0f, -0.5f * constant::scale_lengths, 0.0f } /* beach ball */ };
+	std::vector<glm::vec3> translations = { { 0.0f, -5.0f * constant::scale_lengths, 0.0f }, /* floor */
+											{ 0.0f, -2.5f * constant::scale_lengths, 0.0f } /* beach ball */,
+											{ 0.0f, 0.0f, 0.0f } /* water */ };
 
     std::vector<Node> scene;
     for (size_t i = 0; i < objects.size(); ++i) {
@@ -123,10 +126,6 @@ project::Project::run()
 			scene.push_back(node);
 		}
     }
-
-    //auto const cone_geometry = loadCone();
-    //Node cone;
-    //cone.set_geometry(cone_geometry);
 
     //
     // Setup the camera
@@ -169,6 +168,16 @@ project::Project::run()
         return;
     }
 
+    GLuint fill_environmentmap_shader = 0u;
+    program_manager.CreateAndRegisterProgram("Fill environment map",
+        { { ShaderType::vertex, "EDAN35/fill_environmentmap.vert" },
+          { ShaderType::fragment, "EDAN35/fill_environmentmap.frag" } },
+        fill_environmentmap_shader);
+    if (fill_environmentmap_shader == 0u) {
+        LogError("Failed to load environmentmap filling shader");
+        return;
+    }
+
     GLuint accumulate_lights_shader = 0u;
     program_manager.CreateAndRegisterProgram("Accumulate light",
         { { ShaderType::vertex, "EDAN35/accumulate_lights.vert" },
@@ -189,16 +198,6 @@ project::Project::run()
         return;
     }
 
-    //GLuint render_light_cones_shader = 0u;
-    //program_manager.CreateAndRegisterProgram("Render light cones",
-    //    { { ShaderType::vertex, "EDAN35/render_light_cones.vert" },
-    //      { ShaderType::fragment, "EDAN35/render_light_cones.frag" } },
-    //    render_light_cones_shader);
-    //if (render_light_cones_shader == 0u) {
-    //    LogError("Failed to load light cones rendering shader");
-    //    return;
-    //}
-
     auto const set_uniforms = [](GLuint /*program*/) {};
 
     int framebuffer_width, framebuffer_height;
@@ -214,6 +213,7 @@ project::Project::run()
     auto const light_specular_contribution_texture = bonobo::createTexture(framebuffer_width, framebuffer_height);
     auto const depth_texture = bonobo::createTexture(framebuffer_width, framebuffer_height, GL_TEXTURE_2D, GL_DEPTH_COMPONENT32F, GL_DEPTH_COMPONENT, GL_FLOAT);
     auto const shadowmap_texture = bonobo::createTexture(constant::shadowmap_res_x, constant::shadowmap_res_y, GL_TEXTURE_2D, GL_DEPTH_COMPONENT32F, GL_DEPTH_COMPONENT, GL_FLOAT);
+    auto const environmentmap_texture = bonobo::createTexture(constant::environmentmap_res_x, constant::environmentmap_res_y);
 
 
     //
@@ -221,6 +221,7 @@ project::Project::run()
     //
     auto const deferred_fbo = bonobo::createFBO({ diffuse_texture, specular_texture, normal_texture }, depth_texture);
     auto const shadowmap_fbo = bonobo::createFBO({}, shadowmap_texture);
+    auto const environmentmap_fbo = bonobo::createFBO({environmentmap_texture});
     auto const light_fbo = bonobo::createFBO({ light_diffuse_contribution_texture, light_specular_contribution_texture }, depth_texture);
 
     //
@@ -248,6 +249,12 @@ project::Project::run()
         GLfloat border_color[4] = { 1.0f, 0.0f, 0.0f, 0.0f };
         glSamplerParameterfv(sampler, GL_TEXTURE_BORDER_COLOR, border_color);
         });
+    auto const environment_sampler = bonobo::createSampler([](GLuint sampler) {
+        glSamplerParameteri(sampler, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        glSamplerParameteri(sampler, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+        glSamplerParameteri(sampler, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glSamplerParameteri(sampler, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        });
     auto const bind_texture_with_sampler = [](GLenum target, unsigned int slot, GLuint program, std::string const& name, GLuint texture, GLuint sampler) {
         glActiveTexture(GL_TEXTURE0 + slot);
         glBindTexture(target, texture);
@@ -259,20 +266,10 @@ project::Project::run()
     //
     // Setup lights properties
     //
-	//std::array<TRSTransformf, constant::lights_nb> lightTransforms;
-    //std::array<glm::vec3, constant::lights_nb> lightColors;
-    //int lights_nb = static_cast<int>(constant::lights_nb);
     bool are_lights_paused = false;
 
 	glm::vec3 sunDir{ 0.0f, -1.0f, 0.0f };
 	glm::vec3 sunColor{ 1.0f, 1.0f, 1.0f };
-
-    //for (size_t i = 0; i < static_cast<size_t>(lights_nb); ++i) {
-    //    lightTransforms[i].SetTranslate(glm::vec3(0.0f, 1.25f, 0.0f) * constant::scale_lengths);
-    //    lightColors[i] = glm::vec3(0.5f + 0.5f * (static_cast<float>(rand()) / static_cast<float>(RAND_MAX)),
-    //        0.5f + 0.5f * (static_cast<float>(rand()) / static_cast<float>(RAND_MAX)),
-    //        0.5f + 0.5f * (static_cast<float>(rand()) / static_cast<float>(RAND_MAX)));
-    //}
 
 	float const left = -50.0f * constant::scale_lengths;
 	float const right = 50.0f * constant::scale_lengths;
@@ -280,29 +277,17 @@ project::Project::run()
 	float const bot = 50.0f * constant::scale_lengths;
 
     float const lightProjectionNearPlane = 0.01f * constant::scale_lengths;
-    float const lightProjectionFarPlane = 50.0f * constant::scale_lengths;
-
-    //auto lightProjection = glm::perspective(0.5f * glm::pi<float>(),
-    //    static_cast<float>(constant::shadowmap_res_x) / static_cast<float>(constant::shadowmap_res_y),
-    //    lightProjectionNearPlane, lightProjectionFarPlane);
+    float const lightProjectionFarPlane = 500.0f * constant::scale_lengths;
+;
 	TRSTransformf lightTransform;
 	auto lightProjection = glm::ortho(left, right, top, bot, lightProjectionNearPlane, lightProjectionFarPlane);
 
-    //TRSTransformf coneScaleTransform;
-    //coneScaleTransform.SetScale(glm::vec3(lightProjectionFarPlane * 0.8f));
-
-    //TRSTransformf lightOffsetTransform;
-    //lightOffsetTransform.SetTranslate(glm::vec3(0.0f, 0.0f, -0.4f) * constant::scale_lengths);
-
-
     auto seconds_nb = 0.0f;
-
 
     glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
     glClearDepthf(1.0f);
     glEnable(GL_DEPTH_TEST);
     glEnable(GL_CULL_FACE);
-
 
     auto lastTime = std::chrono::high_resolution_clock::now();
     bool show_textures = true;
@@ -352,6 +337,7 @@ project::Project::run()
                 std::string const group_name = "Fill G-buffer";
                 glPushDebugGroup(GL_DEBUG_SOURCE_APPLICATION, 0u, group_name.size(), group_name.data());
             }
+
             glBindFramebuffer(GL_FRAMEBUFFER, deferred_fbo);
             GLenum const deferred_draw_buffers[3] = { GL_COLOR_ATTACHMENT0, GL_COLOR_ATTACHMENT1, GL_COLOR_ATTACHMENT2 };
             glDrawBuffers(3, deferred_draw_buffers);
@@ -362,7 +348,6 @@ project::Project::run()
             glfwGetFramebufferSize(window, &framebuffer_width, &framebuffer_height);
             glViewport(0, 0, framebuffer_width, framebuffer_height);
             glClear(GL_DEPTH_BUFFER_BIT | GL_COLOR_BUFFER_BIT);
-            // XXX: Is any other clearing needed?
 
             GLStateInspection::CaptureSnapshot("Filling Pass");
 
@@ -383,29 +368,25 @@ project::Project::run()
             GLenum light_draw_buffers[2] = { GL_COLOR_ATTACHMENT0, GL_COLOR_ATTACHMENT1 };
             glDrawBuffers(2, light_draw_buffers);
             glViewport(0, 0, framebuffer_width, framebuffer_height);
-            // XXX: Is any clearing needed?
 			glClear(GL_COLOR_BUFFER_BIT);
-            //for (size_t i = 0; i < static_cast<size_t>(lights_nb); ++i) {
-            //auto& lightTransform = lightTransforms[i];
-            //lightTransform.SetRotate(seconds_nb * 0.1f + i * 1.57f, glm::vec3(0.0f, 1.0f, 0.0f));
 
-			lightTransform.SetTranslate(-sunDir * 25.0f/*light pos*/);
+			lightTransform.SetTranslate(-sunDir * 25.0f * constant::scale_lengths/*light pos*/);
 			lightTransform.LookAt(glm::vec3{ 0.0f,0.0f,0.0f }, glm::vec3{ 0.0f,1.0f,0.0f });
             //auto light_matrix = lightProjection * lightOffsetTransform.GetMatrixInverse() * lightTransform.GetMatrixInverse();
             auto light_matrix = lightProjection * lightTransform.GetMatrixInverse();
 
             //
-            // Pass 2.1: Generate shadow map for light i
+            // Pass 2.1: Generate shadow map for sun
             //
             if (utils::opengl::debug::isSupported())
             {
-                std::string const group_name = "Create shadow map SUN";
+                std::string const group_name = "Create shadow map Sun";
                 glPushDebugGroup(GL_DEBUG_SOURCE_APPLICATION, 0u, group_name.size(), group_name.data());
             }
             glBindFramebuffer(GL_FRAMEBUFFER, shadowmap_fbo);
             glViewport(0, 0, constant::shadowmap_res_x, constant::shadowmap_res_y);
-            // XXX: Is any clearing needed?
 			glClear(GL_DEPTH_BUFFER_BIT);
+
             GLStateInspection::CaptureSnapshot("Shadow Map Generation");
 
             for (auto const& element : scene)
@@ -414,26 +395,52 @@ project::Project::run()
             {
                 glPopDebugGroup();
             }
+            //
+            // Pass 2.2: Generate environment map for sun
+            //
+            if (utils::opengl::debug::isSupported())
+            {
+                std::string const group_name = "Create environment map Sun";
+                glPushDebugGroup(GL_DEBUG_SOURCE_APPLICATION, 0u, group_name.size(), group_name.data());
+            }
 
+            glBindFramebuffer(GL_FRAMEBUFFER, environmentmap_fbo);
+            GLenum const environment_draw_buffers[1] = { GL_COLOR_ATTACHMENT0};
+            glDrawBuffers(1, deferred_draw_buffers);
+            auto const status_env = glCheckFramebufferStatus(GL_FRAMEBUFFER);
+            if (status_env != GL_FRAMEBUFFER_COMPLETE)
+                LogError("Something went wrong with framebuffer %u", environmentmap_fbo);
+            glfwGetFramebufferSize(window, &framebuffer_width, &framebuffer_height);
+            glViewport(0, 0, framebuffer_width, framebuffer_height);
+            glClear(GL_DEPTH_BUFFER_BIT | GL_COLOR_BUFFER_BIT);
 
+            GLStateInspection::CaptureSnapshot("Filling Pass");
+
+            for (size_t i = 0; i + 1 < scene.size(); ++i) {
+                auto const& element = scene[i];
+                element.render(light_matrix,glm::mat4(1.0f), fill_environmentmap_shader, set_uniforms);
+            }
+            if (utils::opengl::debug::isSupported())
+            {
+                glPopDebugGroup();
+            }
+            //------------
             glEnable(GL_BLEND);
             glDepthFunc(GL_GREATER);
             glDepthMask(GL_FALSE);
             glBlendEquationSeparate(GL_FUNC_ADD, GL_MIN);
             glBlendFuncSeparate(GL_ONE, GL_ONE, GL_ONE, GL_ONE);
             //
-            // Pass 2.2: Accumulate light i contribution
+            // Pass 2.3: Accumulate light i contribution
             if (utils::opengl::debug::isSupported())
             {
-                std::string const group_name = "Accumulate light SUN";
+                std::string const group_name = "Accumulate light Sun";
                 glPushDebugGroup(GL_DEBUG_SOURCE_APPLICATION, 0u, group_name.size(), group_name.data());
             }
             glBindFramebuffer(GL_FRAMEBUFFER, light_fbo);
             glDrawBuffers(2, light_draw_buffers);
             glUseProgram(accumulate_lights_shader);
             glViewport(0, 0, framebuffer_width, framebuffer_height);
-            // XXX: Is any clearing needed?
-
 
             auto const spotlight_set_uniforms = [framebuffer_width, framebuffer_height, this, &light_matrix, &sunColor, &lightTransform](GLuint program) {
                 glUniform2f(glGetUniformLocation(program, "inv_res"),
@@ -461,10 +468,6 @@ project::Project::run()
 
             GLStateInspection::CaptureSnapshot("Accumulating");
 
-            //cone.render(mCamera.GetWorldToClipMatrix(),
-            //    lightTransform.GetMatrix() * lightOffsetTransform.GetMatrix() * coneScaleTransform.GetMatrix(),
-            //    accumulate_lights_shader, spotlight_set_uniforms);
-
             glBindSampler(2u, 0u);
             glBindSampler(1u, 0u);
             glBindSampler(0u, 0u);
@@ -476,7 +479,6 @@ project::Project::run()
             {
                 glPopDebugGroup();
             }
-            //}
 
 
             glCullFace(GL_BACK);
@@ -541,6 +543,7 @@ project::Project::run()
             bonobo::displayTexture({ -0.95f,  0.55f }, { -0.55f,  0.95f }, shadowmap_texture, default_sampler, { 0, 0, 0, -1 }, glm::uvec2(framebuffer_width, framebuffer_height), true, lightProjectionNearPlane, lightProjectionFarPlane);
             bonobo::displayTexture({ -0.45f,  0.55f }, { -0.05f,  0.95f }, light_diffuse_contribution_texture, default_sampler, { 0, 1, 2, -1 }, glm::uvec2(framebuffer_width, framebuffer_height));
             bonobo::displayTexture({ 0.05f,  0.55f }, { 0.45f,  0.95f }, light_specular_contribution_texture, default_sampler, { 0, 1, 2, -1 }, glm::uvec2(framebuffer_width, framebuffer_height));
+            bonobo::displayTexture({ 0.55f, 0.55f }, { 0.95f, 0.95f }, environmentmap_texture, default_sampler, { 0, 1, 2, -1 }, glm::uvec2(framebuffer_width, framebuffer_height), true, lightProjectionNearPlane, lightProjectionFarPlane);
         }
         //
         // Reset viewport back to normal
