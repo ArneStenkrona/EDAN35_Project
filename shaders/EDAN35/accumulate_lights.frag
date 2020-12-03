@@ -31,7 +31,7 @@ void main()
 	// Convert xyz from [0,1] to [-1,1] to use view projection inverse
 	vec4 screenSpacePos = vec4(uv.x * 2.0 - 1.0, uv.y*2.0 - 1.0, 2.0*depth - 1.0, 1.0);
 	vec4 worldPos = view_projection_inverse * screenSpacePos;
-	worldPos /= worldPos.w;
+	//worldPos /= worldPos.w;
 
 	
 	vec3 p = worldPos.xyz;
@@ -42,17 +42,7 @@ void main()
 	vec3 l = normalize(-light_direction);
 	vec3 r = normalize(reflect(-l, n));
 
-	// cosAngle between the direction towards the light, and the direction of the light negative
-
-	// Angle between light and normal of position.
-	// Used for diffuse component.
-	float cosTheta = dot(l, n);
-
-	// Angle between spotlight direction the direction to light source.
-	// Used for cutoff angle.
-	float cosSigma = dot(normalize(-light_direction), l); 
-
-	float diffuse = cosTheta;
+	float diffuse = dot(n, l);
 	float specular = max(pow(dot(r,v), 100), 0); // QUESTION: Where is the specular map integrated?
 
 	// Implement shadow
@@ -61,11 +51,12 @@ void main()
 	float shadowMultiplier = 0.0;
 	vec3 sampler_centre = (projectedSampler.xyz + 1.0) / 2.0;
 
+	
 	//if (sampler_centre.x >= 0 && sampler_centre.x <= 1.0 && sampler_centre.y >= 0 && sampler_centre.y <= 1.0) {
 	//	shadowMultiplier = texture(shadow_texture, sampler_centre);
 	//}
 	
-	int steps = 10;
+	int steps = 5;
 	int samples = (steps*2 + 1) * (steps*2 + 1);
 	vec3 samplerPos;
 	for (int i = -steps; i <= steps; i++)
@@ -88,8 +79,8 @@ void main()
 	// bias against shadow acne
 	if (shadowMultiplier < 0.05)
 		shadowMultiplier = 0;
-
-	vec4 lightColour = shadowMultiplier * light_intensity * vec4(light_color, 1.0);
+	
+	vec4 lightColour = shadowMultiplier * vec4(light_color, 1.0);
 
 	if (true) 
 	{

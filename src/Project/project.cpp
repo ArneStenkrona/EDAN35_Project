@@ -34,7 +34,7 @@ namespace constant
 
     constexpr float  scale_lengths = 100.0f; // The scene is expressed in centimetres rather than metres, hence the x100.
 
-    constexpr float  light_intensity = 72.0f * (scale_lengths * scale_lengths);
+    constexpr float  light_intensity = 72.0f;
 }
 
 static bonobo::mesh_data loadCone();
