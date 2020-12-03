@@ -38,7 +38,7 @@ namespace constant
     constexpr float  scale_lengths = 100.0f; // The scene is expressed in centimetres rather than metres, hence the x100.
 
     const float shadow_width_half = 10.0f;
-    const float shadow_depth = 20.0f;
+    const float shadow_depth_half = 7.0f;
 
     constexpr float  light_intensity = 72.0f;
 
@@ -297,7 +297,7 @@ project::Project::run()
     //
     bool are_lights_paused = false;
 
-	const glm::vec3 sunDir{ 0.0f, -1.0f, -1.0f };
+	const glm::vec3 sunDir{ 0.0f, -1.0f, 0.0f };
 	const glm::vec3 sunColor{ 1.0f, 1.0f, 1.0f };
 
 	float const left = -constant::shadow_width_half * constant::scale_lengths;
@@ -305,15 +305,16 @@ project::Project::run()
 	float const top = -constant::shadow_width_half * constant::scale_lengths;
 	float const bot = constant::shadow_width_half * constant::scale_lengths;
 
-    float const lightProjectionNearPlane = -constant::shadow_depth * constant::scale_lengths;
-    float const lightProjectionFarPlane = constant::shadow_depth * constant::scale_lengths;
+    float const lightProjectionNearPlane = -constant::shadow_depth_half * constant::scale_lengths;
+    float const lightProjectionFarPlane = constant::shadow_depth_half * constant::scale_lengths;
 
 
 	TRSTransformf lightTransform;
     lightTransform.SetTranslate(-sunDir);
 
     // UP is z as up is seen from the perspective of an image on the XY plane
-    lightTransform.LookAt(glm::vec3{ 0.0f,0.0f,0.0f }, glm::vec3{ 0.0f,1.0f,0.0f });
+    glm::vec3 safeUp = glm::dot(-sunDir, glm::vec3{0.0f, 1.0f, 0.0f}) > 0.99f ? glm::normalize(glm::vec3{0.0f, 1.0f, 1.0f}) : glm::vec3{0.0f, 1.0f, 0.0f};
+    lightTransform.LookAt(glm::vec3{ 0.0f,0.0f,0.0f }, safeUp);
 
 	auto lightProjection = glm::ortho(left, right, top, bot, lightProjectionNearPlane, lightProjectionFarPlane);
 
