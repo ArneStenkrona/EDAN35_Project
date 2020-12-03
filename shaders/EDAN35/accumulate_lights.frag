@@ -66,8 +66,8 @@ void main()
 	//if (sampler_centre.x >= 0 && sampler_centre.x <= 1.0 && sampler_centre.y >= 0 && sampler_centre.y <= 1.0) {
 	//	shadowMultiplier = texture(shadow_texture, sampler_centre);
 	//}
-
-	int steps = 5;
+	
+	int steps = 10;
 	int samples = (steps*2 + 1) * (steps*2 + 1);
 	vec3 samplerPos;
 	for (int i = -steps; i <= steps; i++)
@@ -86,7 +86,7 @@ void main()
 	}
 
 	shadowMultiplier /= samples;
-
+	
 	// bias against shadow acne
 	if (shadowMultiplier < 0.05)
 		shadowMultiplier = 0;

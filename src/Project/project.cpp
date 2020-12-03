@@ -277,7 +277,7 @@ project::Project::run()
     //int lights_nb = static_cast<int>(constant::lights_nb);
     bool are_lights_paused = false;
 
-	const glm::vec3 sunDir{ 0.0f, -1.0f, 0.0f };
+	const glm::vec3 sunDir{ 0.0f, -1.0f, -1.0f };
 	const glm::vec3 sunColor{ 1.0f, 1.0f, 1.0f };
 
     //for (size_t i = 0; i < static_cast<size_t>(lights_nb); ++i) {
@@ -301,12 +301,13 @@ project::Project::run()
 
 	TRSTransformf lightTransform;
     lightTransform.SetTranslate(-sunDir);
-    lightTransform.LookAt(glm::vec3{ 0.0f,0.0f,0.0f }, glm::vec3{ 0.0f,1.0f,0.0f });
+    // UP is z as up is seen from the perspective of an image on the XY plane
+    lightTransform.LookAt(glm::vec3{ 0.0f,0.0f,0.0f }, glm::vec3{ 0.0f,0.0f,1.0f });
 
 	auto lightProjection = glm::ortho(left, right, top, bot, lightProjectionNearPlane, lightProjectionFarPlane);
 
     TRSTransformf boxScaleTransform;
-    boxScaleTransform.SetScale(glm::vec3(right - left, lightProjectionFarPlane - lightProjectionNearPlane, bot - top));
+    boxScaleTransform.SetScale(glm::vec3(right - left, bot - top, lightProjectionFarPlane - lightProjectionNearPlane));
 
     //TRSTransformf lightOffsetTransform;
     //lightOffsetTransform.SetTranslate(glm::vec3(0.0f, 0.0f, -0.4f) * constant::scale_lengths);
@@ -404,6 +405,10 @@ project::Project::run()
             glViewport(0, 0, framebuffer_width, framebuffer_height);
             // XXX: Is any clearing needed?
 			glClear(GL_COLOR_BUFFER_BIT);
+
+
+            /* RENDER DIRECTIONAL LIGHT */
+
             //for (size_t i = 0; i < static_cast<size_t>(lights_nb); ++i) {
             //auto& lightTransform = lightTransforms[i];
             //lightTransform.SetRotate(seconds_nb * 0.1f + i * 1.57f, glm::vec3(0.0f, 1.0f, 0.0f));
@@ -427,7 +432,7 @@ project::Project::run()
             GLStateInspection::CaptureSnapshot("Shadow Map Generation");
 
             for (auto const& element : solids)
-                element.render(light_matrix, glm::mat4(1.0f), fill_shadowmap_shader, set_uniforms);
+                element.render(light_matrix, element.get_transform().GetMatrix(), fill_shadowmap_shader, set_uniforms);
             if (utils::opengl::debug::isSupported())
             {
                 glPopDebugGroup();
