@@ -29,17 +29,19 @@
 
 namespace constant
 {
-    constexpr uint32_t shadowmap_res_x = 1024;
-    constexpr uint32_t shadowmap_res_y = 1024;
+    constexpr uint32_t shadowmap_res_x = 2048;
+    constexpr uint32_t shadowmap_res_y = 2048;
 
     constexpr uint32_t environmentmap_res_x = 1024;
     constexpr uint32_t environmentmap_res_y = 1024;
 
     constexpr float  scale_lengths = 100.0f; // The scene is expressed in centimetres rather than metres, hence the x100.
 
-    //constexpr size_t lights_nb = 1;
+    const float shadow_width = 10.0f;
+    const float shadow_depth = 50.0f;
+
+
     constexpr float  light_intensity = 72.0f * (scale_lengths * scale_lengths);
-    //constexpr float  light_angle_falloff = glm::radians(37.0f);
 }
 
 static bonobo::mesh_data loadCone();
@@ -47,7 +49,7 @@ static bonobo::mesh_data loadCone();
 project::Project::Project(WindowManager& windowManager) :
     mCamera(0.5f * glm::half_pi<float>(),
         static_cast<float>(config::resolution_x) / static_cast<float>(config::resolution_y),
-        0.01f * constant::scale_lengths, 30.0f * constant::scale_lengths),
+        0.01f * constant::scale_lengths, 60.0f * constant::scale_lengths),
     inputHandler(), mWindowManager(windowManager), window(nullptr)
 {
     WindowManager::WindowDatum window_datum{ inputHandler, mCamera, config::resolution_x, config::resolution_y, 0, 0, 0, 0 };
@@ -104,7 +106,9 @@ project::Project::run()
 		LogError("Failed to load the ball model");
 		return;
 	}
-	std::vector<std::vector<bonobo::mesh_data>> objects = { floor, ball, water };
+
+	std::vector<std::vector<bonobo::mesh_data>> solid_objects = { floor , ball };
+    std::vector<std::vector<bonobo::mesh_data>> trans_objects = { water };
 
 #if 0
 	std::vector<bonobo::mesh_data> meshes = { parametric_shapes::createQuad(10 * constant::scale_lengths, 10 * constant::scale_lengths, 1, 1), /* floor */
@@ -112,20 +116,34 @@ project::Project::run()
 											  parametric_shapes::createSphere(16,32, 0.5 * constant::scale_lengths) /* beach ball */ };
 #endif
 
-	std::vector<glm::vec3> translations = { { 0.0f, -5.0f * constant::scale_lengths, 0.0f }, /* floor */
-											{ 0.0f, -2.5f * constant::scale_lengths, 0.0f } /* beach ball */,
-											{ 0.0f, 0.0f, 0.0f } /* water */ };
+	std::vector<glm::vec3> solid_translations = { { 0.0f, -1.0f * constant::scale_lengths, 0.0f }, /* floor */
+											    { 0.0f, 1.0f * constant::scale_lengths, 0.0f } /* beach ball */ };
+    std::vector<glm::vec3> trans_translations = { { 0.0f, 0.0f, 0.0f }, /* water */ };
 
-    std::vector<Node> scene;
-    for (size_t i = 0; i < objects.size(); ++i) {
-		for (size_t j = 0; j < objects[i].size(); ++j) {
+    std::vector<Node> solids;
+    for (size_t i = 0; i < solid_objects.size(); ++i) {
+		for (size_t j = 0; j < solid_objects[i].size(); ++j) {
 			Node node;
-			node.get_transform().SetTranslate(translations[i]);
+			node.get_transform().SetTranslate(solid_translations[i]);
             node.get_transform().Scale(constant::scale_lengths);
-			node.set_geometry(objects[i][j]);
-			scene.push_back(node);
+			node.set_geometry(solid_objects[i][j]);
+            solids.push_back(node);
 		}
     }
+    std::vector<Node> transparents;
+    for (size_t i = 0; i < trans_objects.size(); ++i) {
+        for (size_t j = 0; j < trans_objects[i].size(); ++j) {
+            Node node;
+            node.get_transform().SetTranslate(trans_translations[i]);
+            node.get_transform().Scale(constant::scale_lengths);
+            node.set_geometry(trans_objects[i][j]);
+            transparents.push_back(node);
+        }
+    }
+
+    auto const ortho_box = parametric_shapes::createCube(1.0);
+    Node box;
+    box.set_geometry(ortho_box);
 
     //
     // Setup the camera
@@ -195,6 +213,17 @@ project::Project::run()
         resolve_deferred_shader);
     if (resolve_deferred_shader == 0u) {
         LogError("Failed to load deferred resolution shader");
+        return;
+    }
+
+
+    GLuint render_light_cones_shader = 0u;
+    program_manager.CreateAndRegisterProgram("Render light box",
+        { { ShaderType::vertex, "EDAN35/render_light_cones.vert" },
+          { ShaderType::fragment, "EDAN35/render_light_cones.frag" } },
+        render_light_cones_shader);
+    if (render_light_cones_shader == 0u) {
+        LogError("Failed to load light box rendering shader");
         return;
     }
 
@@ -268,19 +297,27 @@ project::Project::run()
     //
     bool are_lights_paused = false;
 
-	glm::vec3 sunDir{ 0.0f, -1.0f, 0.0f };
-	glm::vec3 sunColor{ 1.0f, 1.0f, 1.0f };
+	const glm::vec3 sunDir{ 0.0f, -1.0f, -1.0f };
+	const glm::vec3 sunColor{ 1.0f, 1.0f, 1.0f };
 
-	float const left = -50.0f * constant::scale_lengths;
-	float const right = 50.0f * constant::scale_lengths;
-	float const top = -50.0f * constant::scale_lengths;
-	float const bot = 50.0f * constant::scale_lengths;
+	float const left = -constant::shadow_width * constant::scale_lengths;
+	float const right = constant::shadow_width * constant::scale_lengths;
+	float const top = -constant::shadow_width * constant::scale_lengths;
+	float const bot = constant::shadow_width * constant::scale_lengths;
 
     float const lightProjectionNearPlane = 0.01f * constant::scale_lengths;
-    float const lightProjectionFarPlane = 500.0f * constant::scale_lengths;
-;
+    float const lightProjectionFarPlane = constant::shadow_depth * constant::scale_lengths;
+
+
 	TRSTransformf lightTransform;
+    lightTransform.SetTranslate(-sunDir);
+    // UP is z as up is seen from the perspective of an image on the XY plane
+    lightTransform.LookAt(glm::vec3{ 0.0f,0.0f,0.0f }, glm::vec3{ 0.0f,0.0f,1.0f });
+
 	auto lightProjection = glm::ortho(left, right, top, bot, lightProjectionNearPlane, lightProjectionFarPlane);
+
+    TRSTransformf boxScaleTransform;
+    boxScaleTransform.SetScale(glm::vec3(right - left, bot - top, lightProjectionFarPlane - lightProjectionNearPlane));
 
     auto seconds_nb = 0.0f;
 
@@ -351,14 +388,12 @@ project::Project::run()
 
             GLStateInspection::CaptureSnapshot("Filling Pass");
 
-            for (auto const& element : scene)
+            for (auto const& element : solids)
                 element.render(mCamera.GetWorldToClipMatrix(), element.get_transform().GetMatrix(), fill_gbuffer_shader, set_uniforms);
             if (utils::opengl::debug::isSupported())
             {
                 glPopDebugGroup();
             }
-
-
 
             glCullFace(GL_FRONT);
             //
@@ -370,9 +405,7 @@ project::Project::run()
             glViewport(0, 0, framebuffer_width, framebuffer_height);
 			glClear(GL_COLOR_BUFFER_BIT);
 
-			lightTransform.SetTranslate(-sunDir * 25.0f * constant::scale_lengths/*light pos*/);
-			lightTransform.LookAt(glm::vec3{ 0.0f,0.0f,0.0f }, glm::vec3{ 0.0f,1.0f,0.0f });
-            //auto light_matrix = lightProjection * lightOffsetTransform.GetMatrixInverse() * lightTransform.GetMatrixInverse();
+            /* RENDER DIRECTIONAL LIGHT */
             auto light_matrix = lightProjection * lightTransform.GetMatrixInverse();
 
             //
@@ -389,8 +422,8 @@ project::Project::run()
 
             GLStateInspection::CaptureSnapshot("Shadow Map Generation");
 
-            for (auto const& element : scene)
-                element.render(light_matrix, glm::mat4(1.0f), fill_shadowmap_shader, set_uniforms);
+            for (auto const& element : solids)
+                element.render(light_matrix, element.get_transform().GetMatrix(), fill_shadowmap_shader, set_uniforms);
             if (utils::opengl::debug::isSupported())
             {
                 glPopDebugGroup();
@@ -416,10 +449,8 @@ project::Project::run()
 
             GLStateInspection::CaptureSnapshot("Filling Pass");
 
-            for (size_t i = 0; i + 1 < scene.size(); ++i) {
-                auto const& element = scene[i];
-                element.render(light_matrix,glm::mat4(1.0f), fill_environmentmap_shader, set_uniforms);
-            }
+            for (auto const& element : solids)
+                element.render(light_matrix, element.get_transform().GetMatrix(), fill_environmentmap_shader, set_uniforms);
             if (utils::opengl::debug::isSupported())
             {
                 glPopDebugGroup();
@@ -442,7 +473,7 @@ project::Project::run()
             glUseProgram(accumulate_lights_shader);
             glViewport(0, 0, framebuffer_width, framebuffer_height);
 
-            auto const spotlight_set_uniforms = [framebuffer_width, framebuffer_height, this, &light_matrix, &sunColor, &lightTransform](GLuint program) {
+            auto const spotlight_set_uniforms = [framebuffer_width, framebuffer_height, this, &light_matrix, &sunColor, &sunDir](GLuint program) {
                 glUniform2f(glGetUniformLocation(program, "inv_res"),
                     1.0f / static_cast<float>(framebuffer_width),
                     1.0f / static_cast<float>(framebuffer_height));
@@ -453,8 +484,9 @@ project::Project::run()
                 glUniformMatrix4fv(glGetUniformLocation(program, "shadow_view_projection"), 1, GL_FALSE,
                     glm::value_ptr(light_matrix));
                 glUniform3fv(glGetUniformLocation(program, "light_color"), 1, glm::value_ptr(sunColor));
-                glUniform3fv(glGetUniformLocation(program, "light_position"), 1, glm::value_ptr(lightTransform.GetTranslation()));
-                glUniform3fv(glGetUniformLocation(program, "light_direction"), 1, glm::value_ptr(lightTransform.GetFront()));
+                //glUniform3fv(glGetUniformLocation(program, "light_position"), 1, glm::value_ptr(lightTransform.GetTranslation()));
+                //glUniform3fv(glGetUniformLocation(program, "light_direction"), 1, glm::value_ptr(lightTransform.GetFront()));
+                glUniform3fv(glGetUniformLocation(program, "light_direction"), 1, glm::value_ptr(sunDir));
                 glUniform1f(glGetUniformLocation(program, "light_intensity"), constant::light_intensity);
                 //glUniform1f(glGetUniformLocation(program, "light_angle_falloff"), constant::light_angle_falloff);
                 glUniform2f(glGetUniformLocation(program, "shadowmap_texel_size"),
@@ -467,6 +499,10 @@ project::Project::run()
             bind_texture_with_sampler(GL_TEXTURE_2D, 2, accumulate_lights_shader, "shadow_texture", shadowmap_texture, shadow_sampler);
 
             GLStateInspection::CaptureSnapshot("Accumulating");
+
+
+            box.render(mCamera.GetWorldToClipMatrix(), lightTransform.GetMatrix() * boxScaleTransform.GetMatrix(),
+                accumulate_lights_shader, spotlight_set_uniforms);
 
             glBindSampler(2u, 0u);
             glBindSampler(1u, 0u);
@@ -520,16 +556,13 @@ project::Project::run()
         //
         // Pass 4: Draw wireframe cones on top of the final image for debugging purposes
         //
-		/*
+		
         if (show_cone_wireframe) {
             glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
-            for (size_t i = 0; i < lights_nb; ++i) {
-                cone.render(mCamera.GetWorldToClipMatrix(),
-                    lightTransforms[i].GetMatrix() * lightOffsetTransform.GetMatrix() * coneScaleTransform.GetMatrix(),
-                    render_light_cones_shader, set_uniforms);
-            }
+            box.render(mCamera.GetWorldToClipMatrix(), lightTransform.GetMatrix() * boxScaleTransform.GetMatrix(),
+                render_light_cones_shader, set_uniforms);
             glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
-        }*/
+        }
 
 
         //
