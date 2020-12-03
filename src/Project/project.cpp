@@ -29,14 +29,12 @@
 
 namespace constant
 {
-    constexpr uint32_t shadowmap_res_x = 1024;
-    constexpr uint32_t shadowmap_res_y = 1024;
+    constexpr uint32_t shadowmap_res_x = 2048;
+    constexpr uint32_t shadowmap_res_y = 2048;
 
     constexpr float  scale_lengths = 100.0f; // The scene is expressed in centimetres rather than metres, hence the x100.
 
-    //constexpr size_t lights_nb = 1;
     constexpr float  light_intensity = 72.0f * (scale_lengths * scale_lengths);
-    //constexpr float  light_angle_falloff = glm::radians(37.0f);
 }
 
 static bonobo::mesh_data loadCone();
@@ -44,7 +42,7 @@ static bonobo::mesh_data loadCone();
 project::Project::Project(WindowManager& windowManager) :
     mCamera(0.5f * glm::half_pi<float>(),
         static_cast<float>(config::resolution_x) / static_cast<float>(config::resolution_y),
-        0.01f * constant::scale_lengths, 30.0f * constant::scale_lengths),
+        0.01f * constant::scale_lengths, 60.0f * constant::scale_lengths),
     inputHandler(), mWindowManager(windowManager), window(nullptr)
 {
     WindowManager::WindowDatum window_datum{ inputHandler, mCamera, config::resolution_x, config::resolution_y, 0, 0, 0, 0 };
@@ -124,6 +122,11 @@ project::Project::run()
 		}
     }
 
+
+    const float shadow_width = 10;
+    auto const ortho_box = parametric_shapes::createCube(1.0);
+    Node box;
+    box.set_geometry(ortho_box);
     //auto const cone_geometry = loadCone();
     //Node cone;
     //cone.set_geometry(cone_geometry);
@@ -189,15 +192,15 @@ project::Project::run()
         return;
     }
 
-    //GLuint render_light_cones_shader = 0u;
-    //program_manager.CreateAndRegisterProgram("Render light cones",
-    //    { { ShaderType::vertex, "EDAN35/render_light_cones.vert" },
-    //      { ShaderType::fragment, "EDAN35/render_light_cones.frag" } },
-    //    render_light_cones_shader);
-    //if (render_light_cones_shader == 0u) {
-    //    LogError("Failed to load light cones rendering shader");
-    //    return;
-    //}
+    GLuint render_light_cones_shader = 0u;
+    program_manager.CreateAndRegisterProgram("Render light box",
+        { { ShaderType::vertex, "EDAN35/render_light_cones.vert" },
+          { ShaderType::fragment, "EDAN35/render_light_cones.frag" } },
+        render_light_cones_shader);
+    if (render_light_cones_shader == 0u) {
+        LogError("Failed to load light box rendering shader");
+        return;
+    }
 
     auto const set_uniforms = [](GLuint /*program*/) {};
 
@@ -264,8 +267,8 @@ project::Project::run()
     //int lights_nb = static_cast<int>(constant::lights_nb);
     bool are_lights_paused = false;
 
-	glm::vec3 sunDir{ 0.0f, -1.0f, 0.0f };
-	glm::vec3 sunColor{ 1.0f, 1.0f, 1.0f };
+	const glm::vec3 sunDir{ 0.0f, -1.0f, 0.0f };
+	const glm::vec3 sunColor{ 1.0f, 1.0f, 1.0f };
 
     //for (size_t i = 0; i < static_cast<size_t>(lights_nb); ++i) {
     //    lightTransforms[i].SetTranslate(glm::vec3(0.0f, 1.25f, 0.0f) * constant::scale_lengths);
@@ -274,22 +277,26 @@ project::Project::run()
     //        0.5f + 0.5f * (static_cast<float>(rand()) / static_cast<float>(RAND_MAX)));
     //}
 
-	float const left = -50.0f * constant::scale_lengths;
-	float const right = 50.0f * constant::scale_lengths;
-	float const top = -50.0f * constant::scale_lengths;
-	float const bot = 50.0f * constant::scale_lengths;
+	float const left = -shadow_width * constant::scale_lengths;
+	float const right = shadow_width * constant::scale_lengths;
+	float const top = -shadow_width * constant::scale_lengths;
+	float const bot = shadow_width * constant::scale_lengths;
 
     float const lightProjectionNearPlane = 0.01f * constant::scale_lengths;
-    float const lightProjectionFarPlane = 50.0f * constant::scale_lengths;
+    float const lightProjectionFarPlane = 2 * shadow_width * constant::scale_lengths;
 
     //auto lightProjection = glm::perspective(0.5f * glm::pi<float>(),
     //    static_cast<float>(constant::shadowmap_res_x) / static_cast<float>(constant::shadowmap_res_y),
     //    lightProjectionNearPlane, lightProjectionFarPlane);
+
 	TRSTransformf lightTransform;
+    lightTransform.SetTranslate(-sunDir);
+    lightTransform.LookAt(glm::vec3{ 0.0f,0.0f,0.0f }, glm::vec3{ 0.0f,1.0f,0.0f });
+
 	auto lightProjection = glm::ortho(left, right, top, bot, lightProjectionNearPlane, lightProjectionFarPlane);
 
-    //TRSTransformf coneScaleTransform;
-    //coneScaleTransform.SetScale(glm::vec3(lightProjectionFarPlane * 0.8f));
+    TRSTransformf boxScaleTransform;
+    boxScaleTransform.SetScale(glm::vec3(right - left, lightProjectionFarPlane - lightProjectionNearPlane, bot - top));
 
     //TRSTransformf lightOffsetTransform;
     //lightOffsetTransform.SetTranslate(glm::vec3(0.0f, 0.0f, -0.4f) * constant::scale_lengths);
@@ -389,8 +396,7 @@ project::Project::run()
             //auto& lightTransform = lightTransforms[i];
             //lightTransform.SetRotate(seconds_nb * 0.1f + i * 1.57f, glm::vec3(0.0f, 1.0f, 0.0f));
 
-			lightTransform.SetTranslate(-sunDir * 25.0f/*light pos*/);
-			lightTransform.LookAt(glm::vec3{ 0.0f,0.0f,0.0f }, glm::vec3{ 0.0f,1.0f,0.0f });
+
             //auto light_matrix = lightProjection * lightOffsetTransform.GetMatrixInverse() * lightTransform.GetMatrixInverse();
             auto light_matrix = lightProjection * lightTransform.GetMatrixInverse();
 
@@ -435,7 +441,7 @@ project::Project::run()
             // XXX: Is any clearing needed?
 
 
-            auto const spotlight_set_uniforms = [framebuffer_width, framebuffer_height, this, &light_matrix, &sunColor, &lightTransform](GLuint program) {
+            auto const spotlight_set_uniforms = [framebuffer_width, framebuffer_height, this, &light_matrix, &sunColor, &sunDir](GLuint program) {
                 glUniform2f(glGetUniformLocation(program, "inv_res"),
                     1.0f / static_cast<float>(framebuffer_width),
                     1.0f / static_cast<float>(framebuffer_height));
@@ -446,8 +452,9 @@ project::Project::run()
                 glUniformMatrix4fv(glGetUniformLocation(program, "shadow_view_projection"), 1, GL_FALSE,
                     glm::value_ptr(light_matrix));
                 glUniform3fv(glGetUniformLocation(program, "light_color"), 1, glm::value_ptr(sunColor));
-                glUniform3fv(glGetUniformLocation(program, "light_position"), 1, glm::value_ptr(lightTransform.GetTranslation()));
-                glUniform3fv(glGetUniformLocation(program, "light_direction"), 1, glm::value_ptr(lightTransform.GetFront()));
+                //glUniform3fv(glGetUniformLocation(program, "light_position"), 1, glm::value_ptr(lightTransform.GetTranslation()));
+                //glUniform3fv(glGetUniformLocation(program, "light_direction"), 1, glm::value_ptr(lightTransform.GetFront()));
+                glUniform3fv(glGetUniformLocation(program, "light_direction"), 1, glm::value_ptr(sunDir));
                 glUniform1f(glGetUniformLocation(program, "light_intensity"), constant::light_intensity);
                 //glUniform1f(glGetUniformLocation(program, "light_angle_falloff"), constant::light_angle_falloff);
                 glUniform2f(glGetUniformLocation(program, "shadowmap_texel_size"),
@@ -461,6 +468,8 @@ project::Project::run()
 
             GLStateInspection::CaptureSnapshot("Accumulating");
 
+            box.render(mCamera.GetWorldToClipMatrix(), lightTransform.GetMatrix() * boxScaleTransform.GetMatrix(),
+                accumulate_lights_shader, spotlight_set_uniforms);
             //cone.render(mCamera.GetWorldToClipMatrix(),
             //    lightTransform.GetMatrix() * lightOffsetTransform.GetMatrix() * coneScaleTransform.GetMatrix(),
             //    accumulate_lights_shader, spotlight_set_uniforms);
@@ -518,16 +527,13 @@ project::Project::run()
         //
         // Pass 4: Draw wireframe cones on top of the final image for debugging purposes
         //
-		/*
+		
         if (show_cone_wireframe) {
             glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
-            for (size_t i = 0; i < lights_nb; ++i) {
-                cone.render(mCamera.GetWorldToClipMatrix(),
-                    lightTransforms[i].GetMatrix() * lightOffsetTransform.GetMatrix() * coneScaleTransform.GetMatrix(),
-                    render_light_cones_shader, set_uniforms);
-            }
+            box.render(mCamera.GetWorldToClipMatrix(), lightTransform.GetMatrix() * boxScaleTransform.GetMatrix(),
+                render_light_cones_shader, set_uniforms);
             glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
-        }*/
+        }
 
 
         //

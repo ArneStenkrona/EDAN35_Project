@@ -11,10 +11,8 @@ uniform vec3 camera_position;
 uniform mat4 shadow_view_projection;
 
 uniform vec3 light_color;
-uniform vec3 light_position;
 uniform vec3 light_direction;
 uniform float light_intensity;
-uniform float light_angle_falloff;
 
 uniform vec2 shadowmap_texel_size;
 
@@ -24,6 +22,88 @@ layout (location = 1) out vec4 light_specular_contribution;
 
 void main()
 {
-	light_diffuse_contribution  = vec4(1.0, 1.0, 1.0, 1.0);
-	light_specular_contribution = vec4(1.0, 1.0, 1.0, 1.0);
+	vec2 uv = inv_res * gl_FragCoord.xy;
+	vec3 normal_im = texture(normal_texture, uv).xyz;
+	vec3 normal = normal_im * 2.0 - 1.0; // convert from [0,1] to [-1, 1]
+
+	float depth = texture(depth_texture, uv).r;
+
+	// Convert xyz from [0,1] to [-1,1] to use view projection inverse
+	vec4 screenSpacePos = vec4(uv.x * 2.0 - 1.0, uv.y*2.0 - 1.0, 2.0*depth - 1.0, 1.0);
+	vec4 worldPos = view_projection_inverse * screenSpacePos;
+	worldPos /= worldPos.w;
+
+	
+	vec3 p = worldPos.xyz;
+	vec3 light_position = p - normalize(light_direction) * 1000;
+	vec3 dist = light_position - p;
+
+	// Where direction only matters.
+	vec3 n = normalize(normal);
+	vec3 v = normalize(camera_position - p);
+	vec3 l = normalize(dist);
+	vec3 r = normalize(reflect(-l, n));
+
+	// cosAngle between the direction towards the light, and the direction of the light negative
+
+	// Angle between light and normal of position.
+	// Used for diffuse component.
+	float cosTheta = dot(l, n);
+
+	// Angle between spotlight direction the direction to light source.
+	// Used for cutoff angle.
+	float cosSigma = dot(normalize(-light_direction), l); 
+
+	// blending, falling quadratically with the squared distance from 1 -> 0.
+	float distanceFalloff  = 1.0 / dot(dist, dist);
+
+	float diffuse = cosTheta;
+	float specular = max(pow(dot(r,v), 100), 0); // QUESTION: Where is the specular map integrated?
+
+	// Implement shadow
+	vec4 projectedSampler = shadow_view_projection * view_projection_inverse * screenSpacePos;
+	projectedSampler /= projectedSampler.w;
+	float shadowMultiplier = 0.0;
+	vec3 sampler_centre = (projectedSampler.xyz + 1.0) / 2.0;
+
+	//if (sampler_centre.x >= 0 && sampler_centre.x <= 1.0 && sampler_centre.y >= 0 && sampler_centre.y <= 1.0) {
+	//	shadowMultiplier = texture(shadow_texture, sampler_centre);
+	//}
+
+	int steps = 5;
+	int samples = (steps*2 + 1) * (steps*2 + 1);
+	vec3 samplerPos;
+	for (int i = -steps; i <= steps; i++)
+	{
+		float dy = i * shadowmap_texel_size.x;
+		for (int j = -steps; j <= steps; j++)
+		{
+			float dx = j * shadowmap_texel_size.y;
+			if (sampler_centre.x + dx >= 0 && sampler_centre.x + dx <= 1.0 && sampler_centre.y + dy >= 0 && sampler_centre.y + dy <= 1.0) {
+				samplerPos = sampler_centre; samplerPos.x += dx; samplerPos.y += dy;
+				shadowMultiplier += texture(shadow_texture, samplerPos);
+			} else {
+				samples--;
+			} 
+		}
+	}
+
+	shadowMultiplier /= samples;
+
+	// bias against shadow acne
+	if (shadowMultiplier < 0.05)
+		shadowMultiplier = 0;
+
+	vec4 lightColour = shadowMultiplier * light_intensity * distanceFalloff * vec4(light_color, 1.0);
+
+	if (true) 
+	{
+		light_diffuse_contribution  = diffuse * lightColour;
+		light_specular_contribution = specular * lightColour;
+	}
+	else 
+	{
+		light_diffuse_contribution = vec4(1.0, 0.0, 0.0, 1.0);
+		light_specular_contribution = vec4(0.0, 0.0, 1.0, 1.0);
+	}
 }
