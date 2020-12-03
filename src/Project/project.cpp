@@ -35,7 +35,7 @@ namespace constant
     constexpr uint32_t environmentmap_res_x = 1024;
     constexpr uint32_t environmentmap_res_y = 1024;
 
-    constexpr float  scale_lengths = 100.0f; // The scene is expressed in centimetres rather than metres, hence the x100.
+    constexpr float  scale_lengths = 1.0f; // The scene is expressed in metres, hence the x1.
 
     const float shadow_width_half = 10.0f;
     const float shadow_depth_half = 7.0f;
@@ -501,12 +501,12 @@ project::Project::run()
 
             glBindFramebuffer(GL_FRAMEBUFFER, environmentmap_fbo);
             GLenum const environment_draw_buffers[1] = { GL_COLOR_ATTACHMENT0 };
-            glDrawBuffers(1, deferred_draw_buffers);
+            glDrawBuffers(1, environment_draw_buffers);
             auto const status_env = glCheckFramebufferStatus(GL_FRAMEBUFFER);
             if (status_env != GL_FRAMEBUFFER_COMPLETE)
                 LogError("Something went wrong with framebuffer %u", environmentmap_fbo);
-            glfwGetFramebufferSize(window, &framebuffer_width, &framebuffer_height);
-            glViewport(0, 0, framebuffer_width, framebuffer_height);
+            glViewport(0, 0, constant::environmentmap_res_x, constant::environmentmap_res_y);
+
             glClear(GL_DEPTH_BUFFER_BIT | GL_COLOR_BUFFER_BIT);
 
             GLStateInspection::CaptureSnapshot("Filling Pass");
@@ -578,7 +578,7 @@ project::Project::run()
             bonobo::displayTexture({ -0.95f,  0.55f }, { -0.55f,  0.95f }, shadowmap_texture, default_sampler, { 0, 0, 0, -1 }, glm::uvec2(framebuffer_width, framebuffer_height), true, lightProjectionNearPlane, lightProjectionFarPlane);
             bonobo::displayTexture({ -0.45f,  0.55f }, { -0.05f,  0.95f }, light_diffuse_contribution_texture, default_sampler, { 0, 1, 2, -1 }, glm::uvec2(framebuffer_width, framebuffer_height));
             bonobo::displayTexture({ 0.05f,  0.55f }, { 0.45f,  0.95f }, light_specular_contribution_texture, default_sampler, { 0, 1, 2, -1 }, glm::uvec2(framebuffer_width, framebuffer_height));
-            bonobo::displayTexture({ 0.55f, 0.55f }, { 0.95f, 0.95f }, environmentmap_texture, default_sampler, { 0, 1, 2, -1 }, glm::uvec2(framebuffer_width, framebuffer_height), true, lightProjectionNearPlane, lightProjectionFarPlane);
+            bonobo::displayTexture({ 0.55f, 0.55f }, { 0.95f, 0.95f }, environmentmap_texture, default_sampler, { 0, 1, 2, -1 }, glm::uvec2(framebuffer_width, framebuffer_height), false);
         }
         //
         // Reset viewport back to normal
@@ -634,98 +634,4 @@ int main()
     catch (std::runtime_error const& e) {
         LogError(e.what());
     }
-}
-
-static
-bonobo::mesh_data
-loadCone()
-{
-    bonobo::mesh_data cone;
-    cone.vertices_nb = 65;
-    cone.drawing_mode = GL_TRIANGLE_STRIP;
-    float vertexArrayData[65 * 3] = {
-        0.f, 1.f, -1.f,
-        0.f, 0.f, 0.f,
-        0.38268f, 0.92388f, -1.f,
-        0.f, 0.f, 0.f,
-        0.70711f, 0.70711f, -1.f,
-        0.f, 0.f, 0.f,
-        0.92388f, 0.38268f, -1.f,
-        0.f, 0.f, 0.f,
-        1.f, 0.f, -1.f,
-        0.f, 0.f, 0.f,
-        0.92388f, -0.38268f, -1.f,
-        0.f, 0.f, 0.f,
-        0.70711f, -0.70711f, -1.f,
-        0.f, 0.f, 0.f,
-        0.38268f, -0.92388f, -1.f,
-        0.f, 0.f, 0.f,
-        0.f, -1.f, -1.f,
-        0.f, 0.f, 0.f,
-        -0.38268f, -0.92388f, -1.f,
-        0.f, 0.f, 0.f,
-        -0.70711f, -0.70711f, -1.f,
-        0.f, 0.f, 0.f,
-        -0.92388f, -0.38268f, -1.f,
-        0.f, 0.f, 0.f,
-        -1.f, 0.f, -1.f,
-        0.f, 0.f, 0.f,
-        -0.92388f, 0.38268f, -1.f,
-        0.f, 0.f, 0.f,
-        -0.70711f, 0.70711f, -1.f,
-        0.f, 0.f, 0.f,
-        -0.38268f, 0.92388f, -1.f,
-        0.f, 1.f, -1.f,
-        0.f, 1.f, -1.f,
-        0.38268f, 0.92388f, -1.f,
-        0.f, 1.f, -1.f,
-        0.70711f, 0.70711f, -1.f,
-        0.f, 0.f, -1.f,
-        0.92388f, 0.38268f, -1.f,
-        0.f, 0.f, -1.f,
-        1.f, 0.f, -1.f,
-        0.f, 0.f, -1.f,
-        0.92388f, -0.38268f, -1.f,
-        0.f, 0.f, -1.f,
-        0.70711f, -0.70711f, -1.f,
-        0.f, 0.f, -1.f,
-        0.38268f, -0.92388f, -1.f,
-        0.f, 0.f, -1.f,
-        0.f, -1.f, -1.f,
-        0.f, 0.f, -1.f,
-        -0.38268f, -0.92388f, -1.f,
-        0.f, 0.f, -1.f,
-        -0.70711f, -0.70711f, -1.f,
-        0.f, 0.f, -1.f,
-        -0.92388f, -0.38268f, -1.f,
-        0.f, 0.f, -1.f,
-        -1.f, 0.f, -1.f,
-        0.f, 0.f, -1.f,
-        -0.92388f, 0.38268f, -1.f,
-        0.f, 0.f, -1.f,
-        -0.70711f, 0.70711f, -1.f,
-        0.f, 0.f, -1.f,
-        -0.38268f, 0.92388f, -1.f,
-        0.f, 0.f, -1.f,
-        0.f, 1.f, -1.f,
-        0.f, 0.f, -1.f
-    };
-
-    glGenVertexArrays(1, &cone.vao);
-    assert(cone.vao != 0u);
-    glBindVertexArray(cone.vao);
-    {
-        glGenBuffers(1, &cone.bo);
-        assert(cone.bo != 0u);
-        glBindBuffer(GL_ARRAY_BUFFER, cone.bo);
-        glBufferData(GL_ARRAY_BUFFER, cone.vertices_nb * 3 * sizeof(float), vertexArrayData, GL_STATIC_DRAW);
-
-        glVertexAttribPointer(static_cast<int>(bonobo::shader_bindings::vertices), 3, GL_FLOAT, GL_FALSE, 0, reinterpret_cast<GLvoid const*>(0x0));
-        glEnableVertexAttribArray(static_cast<int>(bonobo::shader_bindings::vertices));
-
-        glBindBuffer(GL_ARRAY_BUFFER, 0u);
-    }
-    glBindVertexArray(0u);
-
-    return cone;
 }
