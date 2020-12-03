@@ -22,6 +22,5 @@ void main() {
 	vs_out.texcoord = texcoord.xy;
 	vs_out.tangent  = normalize(tangent);
 	vs_out.binormal = normalize(binormal);
-
 	gl_Position = vertex_world_to_clip * vertex_model_to_world * vec4(vertex, 1.0);
 }

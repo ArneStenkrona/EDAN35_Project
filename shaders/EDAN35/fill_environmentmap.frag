@@ -18,5 +18,5 @@ layout (location = 0) out vec4 environment_map;
 
 void main()
 {
-	environment_map = vec4(fs_in.fragPos, gl_FragDepth);
+	environment_map = vec4(1.0/1024.0,1.0/1024.0,1.0,1.0) * gl_FragCoord;
 }

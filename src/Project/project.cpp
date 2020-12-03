@@ -37,11 +37,11 @@ namespace constant
 
     constexpr float  scale_lengths = 100.0f; // The scene is expressed in centimetres rather than metres, hence the x100.
 
-    const float shadow_width = 10.0f;
-    const float shadow_depth = 50.0f;
+    const float shadow_width_half = 10.0f;
+    const float shadow_depth = 20.0f;
 
+    constexpr float  light_intensity = 72.0f;
 
-    constexpr float  light_intensity = 72.0f * (scale_lengths * scale_lengths);
 }
 
 static bonobo::mesh_data loadCone();
@@ -300,24 +300,24 @@ project::Project::run()
 	const glm::vec3 sunDir{ 0.0f, -1.0f, -1.0f };
 	const glm::vec3 sunColor{ 1.0f, 1.0f, 1.0f };
 
-	float const left = -constant::shadow_width * constant::scale_lengths;
-	float const right = constant::shadow_width * constant::scale_lengths;
-	float const top = -constant::shadow_width * constant::scale_lengths;
-	float const bot = constant::shadow_width * constant::scale_lengths;
+	float const left = -constant::shadow_width_half * constant::scale_lengths;
+	float const right = constant::shadow_width_half * constant::scale_lengths;
+	float const top = -constant::shadow_width_half * constant::scale_lengths;
+	float const bot = constant::shadow_width_half * constant::scale_lengths;
 
-    float const lightProjectionNearPlane = 0.01f * constant::scale_lengths;
+    float const lightProjectionNearPlane = -constant::shadow_depth * constant::scale_lengths;
     float const lightProjectionFarPlane = constant::shadow_depth * constant::scale_lengths;
 
 
 	TRSTransformf lightTransform;
     lightTransform.SetTranslate(-sunDir);
+
     // UP is z as up is seen from the perspective of an image on the XY plane
-    lightTransform.LookAt(glm::vec3{ 0.0f,0.0f,0.0f }, glm::vec3{ 0.0f,0.0f,1.0f });
+    lightTransform.LookAt(glm::vec3{ 0.0f,0.0f,0.0f }, glm::vec3{ 0.0f,1.0f,0.0f });
 
 	auto lightProjection = glm::ortho(left, right, top, bot, lightProjectionNearPlane, lightProjectionFarPlane);
 
-    TRSTransformf boxScaleTransform;
-    boxScaleTransform.SetScale(glm::vec3(right - left, bot - top, lightProjectionFarPlane - lightProjectionNearPlane));
+    glm::mat4 boxScale = glm::scale(glm::mat4(1.0f), glm::vec3(right-left, bot - top, lightProjectionFarPlane - lightProjectionNearPlane));
 
     auto seconds_nb = 0.0f;
 
@@ -428,41 +428,13 @@ project::Project::run()
             {
                 glPopDebugGroup();
             }
-            //
-            // Pass 2.2: Generate environment map for sun
-            //
-            if (utils::opengl::debug::isSupported())
-            {
-                std::string const group_name = "Create environment map Sun";
-                glPushDebugGroup(GL_DEBUG_SOURCE_APPLICATION, 0u, group_name.size(), group_name.data());
-            }
-
-            glBindFramebuffer(GL_FRAMEBUFFER, environmentmap_fbo);
-            GLenum const environment_draw_buffers[1] = { GL_COLOR_ATTACHMENT0};
-            glDrawBuffers(1, deferred_draw_buffers);
-            auto const status_env = glCheckFramebufferStatus(GL_FRAMEBUFFER);
-            if (status_env != GL_FRAMEBUFFER_COMPLETE)
-                LogError("Something went wrong with framebuffer %u", environmentmap_fbo);
-            glfwGetFramebufferSize(window, &framebuffer_width, &framebuffer_height);
-            glViewport(0, 0, framebuffer_width, framebuffer_height);
-            glClear(GL_DEPTH_BUFFER_BIT | GL_COLOR_BUFFER_BIT);
-
-            GLStateInspection::CaptureSnapshot("Filling Pass");
-
-            for (auto const& element : solids)
-                element.render(light_matrix, element.get_transform().GetMatrix(), fill_environmentmap_shader, set_uniforms);
-            if (utils::opengl::debug::isSupported())
-            {
-                glPopDebugGroup();
-            }
-            //------------
             glEnable(GL_BLEND);
             glDepthFunc(GL_GREATER);
             glDepthMask(GL_FALSE);
             glBlendEquationSeparate(GL_FUNC_ADD, GL_MIN);
             glBlendFuncSeparate(GL_ONE, GL_ONE, GL_ONE, GL_ONE);
             //
-            // Pass 2.3: Accumulate light i contribution
+            // Pass 2.2: Accumulate light i contribution
             if (utils::opengl::debug::isSupported())
             {
                 std::string const group_name = "Accumulate light Sun";
@@ -501,7 +473,7 @@ project::Project::run()
             GLStateInspection::CaptureSnapshot("Accumulating");
 
 
-            box.render(mCamera.GetWorldToClipMatrix(), lightTransform.GetMatrix() * boxScaleTransform.GetMatrix(),
+            box.render(mCamera.GetWorldToClipMatrix(), lightTransform.GetMatrix() * boxScale,
                 accumulate_lights_shader, spotlight_set_uniforms);
 
             glBindSampler(2u, 0u);
@@ -516,6 +488,35 @@ project::Project::run()
                 glPopDebugGroup();
             }
 
+            //
+            // Pass 2.3: Generate environment map for sun
+            //
+            glCullFace(GL_BACK);
+            if (utils::opengl::debug::isSupported())
+            {
+                std::string const group_name = "Create environment map Sun";
+                glPushDebugGroup(GL_DEBUG_SOURCE_APPLICATION, 0u, group_name.size(), group_name.data());
+            }
+
+            glBindFramebuffer(GL_FRAMEBUFFER, environmentmap_fbo);
+            GLenum const environment_draw_buffers[1] = { GL_COLOR_ATTACHMENT0 };
+            glDrawBuffers(1, deferred_draw_buffers);
+            auto const status_env = glCheckFramebufferStatus(GL_FRAMEBUFFER);
+            if (status_env != GL_FRAMEBUFFER_COMPLETE)
+                LogError("Something went wrong with framebuffer %u", environmentmap_fbo);
+            glfwGetFramebufferSize(window, &framebuffer_width, &framebuffer_height);
+            glViewport(0, 0, framebuffer_width, framebuffer_height);
+            glClear(GL_DEPTH_BUFFER_BIT | GL_COLOR_BUFFER_BIT);
+
+            GLStateInspection::CaptureSnapshot("Filling Pass");
+
+            for (auto const& element : solids)
+                element.render(light_matrix, element.get_transform().GetMatrix(), fill_environmentmap_shader, set_uniforms);
+            if (utils::opengl::debug::isSupported())
+            {
+                glPopDebugGroup();
+            }
+            //------------
 
             glCullFace(GL_BACK);
             glDepthFunc(GL_ALWAYS);
@@ -559,7 +560,7 @@ project::Project::run()
 		
         if (show_cone_wireframe) {
             glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
-            box.render(mCamera.GetWorldToClipMatrix(), lightTransform.GetMatrix() * boxScaleTransform.GetMatrix(),
+            box.render(mCamera.GetWorldToClipMatrix(), lightTransform.GetMatrix() * boxScale,
                 render_light_cones_shader, set_uniforms);
             glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
         }
