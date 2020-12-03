@@ -15,6 +15,9 @@ res.zip
 imgui.ini
 log.txt
 
+# blend
+*.blend1
+
 # Visual Studio Files
 .vs/
 *.opensdf

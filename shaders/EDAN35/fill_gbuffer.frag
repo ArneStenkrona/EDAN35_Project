@@ -46,7 +46,7 @@ void main()
 		vec3 n = normalize(fs_in.normal);
 		mat3 tbn = mat3(t, b, n);
 		vec3 textureNormal = (texture(normals_texture, fs_in.texcoord).xyz * 2.0) - 1.0;
-		normal = vec3(1.0,0,0); //normalize(tbn * textureNormal);
+		normal = normalize(tbn * textureNormal);
 	} else {
 		normal = fs_in.normal;
 	}

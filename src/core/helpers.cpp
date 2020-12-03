@@ -108,7 +108,7 @@ bonobo::loadObjects(std::string const& filename)
 					bindings.emplace(name, id);
 			}
 		};
-
+		assert(0 == material->GetTextureCount(aiTextureType_HEIGHT));
 		process_texture(aiTextureType_DIFFUSE,  "diffuse",  "diffuse_texture");
 		process_texture(aiTextureType_SPECULAR, "specular", "specular_texture");
 		process_texture(aiTextureType_NORMALS,  "normals",  "normals_texture");
