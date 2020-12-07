@@ -258,6 +258,9 @@ project::Project::run()
     auto const environmentmap_texture = bonobo::createTexture(constant::environmentmap_res_x, constant::environmentmap_res_y);
     auto const causticmap_texture = bonobo::createTexture(constant::causticmap_res_x, constant::causticmap_res_y/*, GL_TEXTURE_2D, GL_R8*/);
 
+    for (auto & node: transparents) {
+        node.add_texture("environmentmap_texture", causticmap_texture, GL_TEXTURE_2D);
+    }
 
     //
     // Setup FBOs
@@ -559,8 +562,8 @@ project::Project::run()
 
             glClear(GL_DEPTH_BUFFER_BIT | GL_COLOR_BUFFER_BIT);
             // We need to bind the environment map
-            glUseProgram(fill_causticmap_shader);
-            bind_texture_with_sampler(GL_TEXTURE_2D, 0, fill_causticmap_shader, "environmentmap_texture", environmentmap_texture, default_sampler);
+            //glUseProgram(fill_causticmap_shader);
+            //bind_texture_with_sampler(GL_TEXTURE_2D, 0, fill_causticmap_shader, "environmentmap_texture", environmentmap_texture, default_sampler);
 
             GLStateInspection::CaptureSnapshot("Filling Pass");
 
@@ -571,7 +574,7 @@ project::Project::run()
                 glPopDebugGroup();
             }
             //------------
-
+            //* WATER RENDERING? */
             glCullFace(GL_BACK);
             glDepthFunc(GL_ALWAYS);
             //
