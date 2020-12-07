@@ -19,7 +19,6 @@ uniform vec2 shadowmap_texel_size;
 layout (location = 0) out vec4 light_diffuse_contribution;
 layout (location = 1) out vec4 light_specular_contribution;
 
-
 void main()
 {
 	vec2 uv = inv_res * gl_FragCoord.xy;

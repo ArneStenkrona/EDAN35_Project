@@ -79,21 +79,6 @@ project::Project::~Project()
 void
 project::Project::run()
 {
-
-	// Load the geometry of Sponza
-	//auto const sponza_geometry = bonobo::loadObjects(config::resources_path("sponza/sponza.obj"));
-	//if (sponza_geometry.empty()) {
-	//    LogError("Failed to load the Sponza model");
-	//    return;
-	//}
-	//std::vector<Node> sponza_elements;
-	//sponza_elements.reserve(sponza_geometry.size());
-	//for (auto const& shape : sponza_geometry) {
-	//    Node node;
-	//    node.set_geometry(shape);
-	//    sponza_elements.push_back(node);
-	//}
-
 	auto const water = bonobo::loadObjects(config::resources_path("models/water/water.obj"));
 	if (water.empty()) {
 		LogError("Failed to load the water model");
@@ -605,6 +590,11 @@ project::Project::run()
             bind_texture_with_sampler(GL_TEXTURE_2D, 1, resolve_deferred_shader, "specular_texture", specular_texture, default_sampler);
             bind_texture_with_sampler(GL_TEXTURE_2D, 2, resolve_deferred_shader, "light_d_texture", light_diffuse_contribution_texture, default_sampler);
             bind_texture_with_sampler(GL_TEXTURE_2D, 3, resolve_deferred_shader, "light_s_texture", light_specular_contribution_texture, default_sampler);
+            bind_texture_with_sampler(GL_TEXTURE_2D, 4, resolve_deferred_shader, "depth_texture", depth_texture, default_sampler);
+            bind_texture_with_sampler(GL_TEXTURE_2D, 5, resolve_deferred_shader, "caustic_texture", causticmap_texture, default_sampler);
+            glUniformMatrix4fv(glGetUniformLocation(resolve_deferred_shader, "depth_to_world"), 1, GL_FALSE, glm::value_ptr(glm::inverse(mCamera.GetWorldToClipMatrix())));
+            glUniformMatrix4fv(glGetUniformLocation(resolve_deferred_shader, "world_to_sun"), 1, GL_FALSE, glm::value_ptr(light_matrix));
+
 
             GLStateInspection::CaptureSnapshot("Resolve Pass");
 

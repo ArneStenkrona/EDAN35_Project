@@ -55,8 +55,8 @@ void main()
     float currentDepth = projectedPos.z;
     vec4 environment = texture(environmentmap_texture, coords);
 
-//    float factor = environmentmap_texel_size.x / length(refractedDirection.xy); // should be 2D
-    float factor = length(environmentmap_texel_size) / length(refractedDirection.xy); // should be 2D
+    float factor = environmentmap_texel_size.x / length(refractedDirection.xy); // should be 2D
+//    float factor = length(environmentmap_texel_size) / length(refractedDirection.xy); 
 
     vec2 deltaDirection = refractedDirection.xy * factor;
     float deltaDepth = refractedDirection.z * factor;
