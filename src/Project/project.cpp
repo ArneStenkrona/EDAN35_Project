@@ -259,7 +259,7 @@ project::Project::run()
     auto const causticmap_texture = bonobo::createTexture(constant::causticmap_res_x, constant::causticmap_res_y/*, GL_TEXTURE_2D, GL_R8*/);
 
     for (auto & node: transparents) {
-        node.add_texture("environmentmap_texture", causticmap_texture, GL_TEXTURE_2D);
+        node.add_texture("environmentmap_texture", environmentmap_texture, GL_TEXTURE_2D);
     }
 
     //
