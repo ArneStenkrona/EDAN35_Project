@@ -121,7 +121,7 @@ project::Project::run()
 
 	std::vector<glm::vec3> solid_translations = { { 0.0f, -1.0f * constant::scale_lengths, 0.0f }, /* floor */
 											    { 0.0f, 1.0f * constant::scale_lengths, 0.0f } /* beach ball */ };
-    std::vector<glm::vec3> trans_translations = { { 0.0f, 0.0f, 0.0f }, /* water */ };
+    std::vector<glm::vec3> trans_translations = { { 0.0f, 2.0f * constant::scale_lengths, 0.0f }, /* water */ };
 
     std::vector<Node> solids;
     for (size_t i = 0; i < solid_objects.size(); ++i) {
@@ -255,7 +255,7 @@ project::Project::run()
     auto const light_specular_contribution_texture = bonobo::createTexture(framebuffer_width, framebuffer_height);
     auto const depth_texture = bonobo::createTexture(framebuffer_width, framebuffer_height, GL_TEXTURE_2D, GL_DEPTH_COMPONENT32F, GL_DEPTH_COMPONENT, GL_FLOAT);
     auto const shadowmap_texture = bonobo::createTexture(constant::shadowmap_res_x, constant::shadowmap_res_y, GL_TEXTURE_2D, GL_DEPTH_COMPONENT32F, GL_DEPTH_COMPONENT, GL_FLOAT);
-    auto const environmentmap_texture = bonobo::createTexture(constant::environmentmap_res_x, constant::environmentmap_res_y);
+    auto const environmentmap_texture = bonobo::createTexture(constant::environmentmap_res_x, constant::environmentmap_res_y, GL_TEXTURE_2D, GL_RGBA32F);
     auto const causticmap_texture = bonobo::createTexture(constant::causticmap_res_x, constant::causticmap_res_y/*, GL_TEXTURE_2D, GL_R8*/);
 
     for (auto & node: transparents) {
@@ -567,8 +567,19 @@ project::Project::run()
 
             GLStateInspection::CaptureSnapshot("Filling Pass");
 
+            auto const caustic_set_uniforms = [&sunColor, &sunDir](GLuint program) {
+                glUniform2f(glGetUniformLocation(program, "inv_res"),
+                    1.0f / static_cast<float>(constant::causticmap_res_x),
+                    1.0f / static_cast<float>(constant::causticmap_res_y));
+                glUniform3fv(glGetUniformLocation(program, "light_color"), 1, glm::value_ptr(sunColor));
+                glUniform3fv(glGetUniformLocation(program, "light_direction"), 1, glm::value_ptr(sunDir));
+                glUniform2f(glGetUniformLocation(program, "environmentmap_texel_size"),
+                    1.0f / static_cast<float>(constant::environmentmap_res_x),
+                    1.0f / static_cast<float>(constant::environmentmap_res_y));
+            };
+
             for (auto const& element : transparents)
-                element.render(light_matrix, element.get_transform().GetMatrix(), fill_causticmap_shader, set_uniforms);
+                element.render(light_matrix, element.get_transform().GetMatrix(), fill_causticmap_shader, caustic_set_uniforms);
             if (utils::opengl::debug::isSupported())
             {
                 glPopDebugGroup();
@@ -635,7 +646,7 @@ project::Project::run()
             bonobo::displayTexture({ -0.45f,  0.55f }, { -0.05f,  0.95f }, light_diffuse_contribution_texture, default_sampler, { 0, 1, 2, -1 }, glm::uvec2(framebuffer_width, framebuffer_height));
             bonobo::displayTexture({ 0.05f,  0.55f }, { 0.45f,  0.95f }, light_specular_contribution_texture, default_sampler, { 0, 1, 2, -1 }, glm::uvec2(framebuffer_width, framebuffer_height));
             bonobo::displayTexture({ 0.55f, 0.55f }, { 0.95f, 0.95f }, environmentmap_texture, default_sampler, { 0, 1, 2, -1 }, glm::uvec2(framebuffer_width, framebuffer_height), false);
-            bonobo::displayTexture({ 0.55f, -0.05f }, { 0.95f, 0.45f }, causticmap_texture, default_sampler, { 0, 1, 2, -1 }, glm::uvec2(framebuffer_width, framebuffer_height), false);
+            bonobo::displayTexture({ 0.55f, 0.05f }, { 0.95f, 0.45f }, causticmap_texture, default_sampler, { 0, 1, 2, -1 }, glm::uvec2(framebuffer_width, framebuffer_height), false);
         }
         //
         // Reset viewport back to normal

@@ -2,24 +2,39 @@
 // Using waters normal
 #version 410
 
-
-uniform bool has_normals_texture;
-uniform bool has_environmentmap_texture;
-uniform bool randombool;
-uniform sampler2D normals_texture;
-uniform sampler2D environmentmap_texture;
-uniform mat4 normal_model_to_world;
-
 in VS_OUT {
-    vec4 fragPos;
-    vec2 texcoord;
+    vec3 oldPos;
+    vec3 newPos;
+    vec3 normal;
+//    vec3 tangent;
+//    vec3 binormal;
+    float waterDepth;
+    float depth;
 } fs_in;
 
 layout (location = 0) out vec4 caustic_map;
 
+const float causticsFactor = 0.15;
+
 void main()
 {
-    vec3 col = texture(environmentmap_texture, gl_FragCoord.xy / 2048).rgb;
+    float causticsIntensity = 0.;
 
-    caustic_map = vec4(col, 1.0);
+    if (fs_in.depth >= fs_in.waterDepth) {
+        float oldArea = length(dFdx(fs_in.oldPos)) * length(dFdy(fs_in.oldPos));
+        float newArea = length(dFdx(fs_in.newPos)) * length(dFdy(fs_in.newPos));
+
+        float ratio;
+
+        // Prevent dividing by zero (debug NVidia drivers)
+        if (newArea == 0.) {
+        // Arbitrary large value
+        ratio = 2.0e+20;
+    } else {
+        ratio = oldArea / newArea;
+    }
+        causticsIntensity = causticsFactor * ratio;
+    }
+
+    caustic_map = vec4(vec3(causticsIntensity), fs_in.depth);
 }
