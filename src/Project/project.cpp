@@ -32,8 +32,11 @@ namespace constant
     constexpr uint32_t shadowmap_res_x = 2048;
     constexpr uint32_t shadowmap_res_y = 2048;
 
-    constexpr uint32_t environmentmap_res_x = 1024;
-    constexpr uint32_t environmentmap_res_y = 1024;
+    constexpr uint32_t environmentmap_res_x = 2048;
+    constexpr uint32_t environmentmap_res_y = 2048;
+
+    constexpr uint32_t causticmap_res_x = 2048;
+    constexpr uint32_t causticmap_res_y = 2048;
 
     constexpr float  scale_lengths = 1.0f; // The scene is expressed in metres, hence the x1.
 
@@ -196,6 +199,16 @@ project::Project::run()
         return;
     }
 
+    GLuint fill_causticmap_shader = 0u;
+    program_manager.CreateAndRegisterProgram("Fill caustic map",
+        { { ShaderType::vertex, "EDAN35/fill_causticmap.vert" },
+          { ShaderType::fragment, "EDAN35/fill_causticmap.frag" } },
+        fill_causticmap_shader);
+    if (fill_causticmap_shader == 0u) {
+        LogError("Failed to load causticmap filling shader");
+        return;
+    }
+
     GLuint accumulate_lights_shader = 0u;
     program_manager.CreateAndRegisterProgram("Accumulate light",
         { { ShaderType::vertex, "EDAN35/accumulate_lights.vert" },
@@ -243,6 +256,7 @@ project::Project::run()
     auto const depth_texture = bonobo::createTexture(framebuffer_width, framebuffer_height, GL_TEXTURE_2D, GL_DEPTH_COMPONENT32F, GL_DEPTH_COMPONENT, GL_FLOAT);
     auto const shadowmap_texture = bonobo::createTexture(constant::shadowmap_res_x, constant::shadowmap_res_y, GL_TEXTURE_2D, GL_DEPTH_COMPONENT32F, GL_DEPTH_COMPONENT, GL_FLOAT);
     auto const environmentmap_texture = bonobo::createTexture(constant::environmentmap_res_x, constant::environmentmap_res_y);
+    auto const causticmap_texture = bonobo::createTexture(constant::causticmap_res_x, constant::causticmap_res_y/*, GL_TEXTURE_2D, GL_R8*/);
 
 
     //
@@ -250,7 +264,8 @@ project::Project::run()
     //
     auto const deferred_fbo = bonobo::createFBO({ diffuse_texture, specular_texture, normal_texture }, depth_texture);
     auto const shadowmap_fbo = bonobo::createFBO({}, shadowmap_texture);
-    auto const environmentmap_fbo = bonobo::createFBO({environmentmap_texture});
+    auto const environmentmap_fbo = bonobo::createFBO({ environmentmap_texture });
+    auto const causticmap_fbo = bonobo::createFBO({ causticmap_texture });
     auto const light_fbo = bonobo::createFBO({ light_diffuse_contribution_texture, light_specular_contribution_texture }, depth_texture);
 
     //
@@ -279,6 +294,12 @@ project::Project::run()
         glSamplerParameterfv(sampler, GL_TEXTURE_BORDER_COLOR, border_color);
         });
     auto const environment_sampler = bonobo::createSampler([](GLuint sampler) {
+        glSamplerParameteri(sampler, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        glSamplerParameteri(sampler, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+        glSamplerParameteri(sampler, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glSamplerParameteri(sampler, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        });
+    auto const caustic_sampler = bonobo::createSampler([](GLuint sampler) {
         glSamplerParameteri(sampler, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
         glSamplerParameteri(sampler, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
         glSamplerParameteri(sampler, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
@@ -502,7 +523,7 @@ project::Project::run()
             glBindFramebuffer(GL_FRAMEBUFFER, environmentmap_fbo);
             GLenum const environment_draw_buffers[1] = { GL_COLOR_ATTACHMENT0 };
             glDrawBuffers(1, environment_draw_buffers);
-            auto const status_env = glCheckFramebufferStatus(GL_FRAMEBUFFER);
+            auto status_env = glCheckFramebufferStatus(GL_FRAMEBUFFER);
             if (status_env != GL_FRAMEBUFFER_COMPLETE)
                 LogError("Something went wrong with framebuffer %u", environmentmap_fbo);
             glViewport(0, 0, constant::environmentmap_res_x, constant::environmentmap_res_y);
@@ -513,6 +534,38 @@ project::Project::run()
 
             for (auto const& element : solids)
                 element.render(light_matrix, element.get_transform().GetMatrix(), fill_environmentmap_shader, set_uniforms);
+            if (utils::opengl::debug::isSupported())
+            {
+                glPopDebugGroup();
+            }
+            //------------
+            //
+            // Pass 2.3: Generate caustic map for sun
+            //
+            glCullFace(GL_BACK);
+            if (utils::opengl::debug::isSupported())
+            {
+                std::string const group_name = "Create caustic map Sun";
+                glPushDebugGroup(GL_DEBUG_SOURCE_APPLICATION, 0u, group_name.size(), group_name.data());
+            }
+
+            glBindFramebuffer(GL_FRAMEBUFFER, causticmap_fbo);
+            GLenum const caustic_draw_buffers[1] = { GL_COLOR_ATTACHMENT0 };
+            glDrawBuffers(1, caustic_draw_buffers);
+            status_env = glCheckFramebufferStatus(GL_FRAMEBUFFER);
+            if (status_env != GL_FRAMEBUFFER_COMPLETE)
+                LogError("Something went wrong with framebuffer %u", causticmap_fbo);
+            glViewport(0, 0, constant::causticmap_res_x, constant::causticmap_res_y);
+
+            glClear(GL_DEPTH_BUFFER_BIT | GL_COLOR_BUFFER_BIT);
+            // We need to bind the environment map
+            glUseProgram(fill_causticmap_shader);
+            bind_texture_with_sampler(GL_TEXTURE_2D, 0, fill_causticmap_shader, "environmentmap_texture", environmentmap_texture, default_sampler);
+
+            GLStateInspection::CaptureSnapshot("Filling Pass");
+
+            for (auto const& element : transparents)
+                element.render(light_matrix, element.get_transform().GetMatrix(), fill_causticmap_shader, set_uniforms);
             if (utils::opengl::debug::isSupported())
             {
                 glPopDebugGroup();
@@ -579,6 +632,7 @@ project::Project::run()
             bonobo::displayTexture({ -0.45f,  0.55f }, { -0.05f,  0.95f }, light_diffuse_contribution_texture, default_sampler, { 0, 1, 2, -1 }, glm::uvec2(framebuffer_width, framebuffer_height));
             bonobo::displayTexture({ 0.05f,  0.55f }, { 0.45f,  0.95f }, light_specular_contribution_texture, default_sampler, { 0, 1, 2, -1 }, glm::uvec2(framebuffer_width, framebuffer_height));
             bonobo::displayTexture({ 0.55f, 0.55f }, { 0.95f, 0.95f }, environmentmap_texture, default_sampler, { 0, 1, 2, -1 }, glm::uvec2(framebuffer_width, framebuffer_height), false);
+            bonobo::displayTexture({ 0.55f, -0.05f }, { 0.95f, 0.45f }, causticmap_texture, default_sampler, { 0, 1, 2, -1 }, glm::uvec2(framebuffer_width, framebuffer_height), false);
         }
         //
         // Reset viewport back to normal

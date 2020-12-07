@@ -11,12 +11,12 @@ uniform sampler2D opacity_texture;
 uniform mat4 normal_model_to_world;
 
 in VS_OUT {
-	vec4 fragPos;
+    vec4 fragPos;
 } fs_in;
 
 layout (location = 0) out vec4 environment_map;
 
 void main()
 {
-	environment_map = fs_in.fragPos;
+    environment_map = fs_in.fragPos;
 }

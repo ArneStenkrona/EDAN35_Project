@@ -7,6 +7,7 @@ layout (location = 0) in vec3 vertex;
 
 out VS_OUT {
     vec4 fragPos;
+    vec2 texcoord;
 } vs_out;
 
 void main()
