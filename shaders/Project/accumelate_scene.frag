@@ -11,8 +11,15 @@ uniform sampler2D opacity_texture;
 uniform mat4 normal_model_to_world;
 
 uniform bool is_water;
+
+uniform mat4 view_projection_inverse;
 uniform vec3 camera_position;
+uniform mat4 shadow_view_projection;
+
 uniform vec3 sun_dir;
+
+uniform vec2 inv_res;
+uniform sampler2DShadow shadow_texture;
 
 in VS_OUT {
 	vec3 normal;
@@ -63,6 +70,30 @@ void main()
 	vec3 r = normalize(reflect(-l,n));
 
 	float diffuse = dot(n,l);
+	result *= diffuse;
 
-	colour = diffuse * vec4(result, 1.0);
+	if (is_water) 
+	{
+		
+	}
+	else
+	{
+		vec2 uv = inv_res * gl_FragCoord.xy;
+		float depth = gl_FragCoord.z;
+		vec4 screenSpacePos = vec4(uv.x * 2.0 - 1.0, uv.y*2.0 - 1.0, 2.0*depth - 1.0, 1.0);
+
+		// Implement shadow
+		vec4 projectedSampler = shadow_view_projection * view_projection_inverse * screenSpacePos;
+		projectedSampler /= projectedSampler.w;
+		float shadowMultiplier = 0.0;
+		vec3 sampler_centre = (projectedSampler.xyz + 1.0) / 2.0;
+
+		if (sampler_centre.x >= 0 && sampler_centre.x <= 1.0 && sampler_centre.y >= 0 && sampler_centre.y <= 1.0) {
+			shadowMultiplier = texture(shadow_texture, sampler_centre);
+		}
+
+		result *= shadowMultiplier;
+	}
+
+	colour = vec4(result, 1.0);
 }

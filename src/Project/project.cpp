@@ -237,7 +237,6 @@ project::Project::run()
     auto const causticmap_texture = bonobo::createTexture(constant::light_texture_res_x, constant::light_texture_res_y/*, GL_TEXTURE_2D, GL_R8*/);
 
     for (auto& node : solids) {
-        node.add_texture("shadowmap_texture", shadowmap_texture, GL_TEXTURE_2D);
         node.add_texture("causticmap_texture", causticmap_texture, GL_TEXTURE_2D);
     }
 
@@ -269,7 +268,6 @@ project::Project::run()
         glSamplerParameteri(sampler, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
         });
 
-#if 0
     auto const shadow_sampler = bonobo::createSampler([](GLuint sampler) {
         glSamplerParameteri(sampler, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
         glSamplerParameteri(sampler, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
@@ -280,6 +278,14 @@ project::Project::run()
         GLfloat border_color[4] = { 1.0f, 0.0f, 0.0f, 0.0f };
         glSamplerParameterfv(sampler, GL_TEXTURE_BORDER_COLOR, border_color);
         });
+    auto const bind_texture_with_sampler = [](GLenum target, unsigned int slot, GLuint program, std::string const& name, GLuint texture, GLuint sampler) {
+        glActiveTexture(GL_TEXTURE0 + slot);
+        glBindTexture(target, texture);
+        glUniform1i(glGetUniformLocation(program, name.c_str()), static_cast<GLint>(slot));
+        glBindSampler(slot, sampler);
+    };
+
+#if 0
     auto const environment_sampler = bonobo::createSampler([](GLuint sampler) {
         glSamplerParameteri(sampler, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
         glSamplerParameteri(sampler, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
@@ -292,12 +298,7 @@ project::Project::run()
         glSamplerParameteri(sampler, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
         glSamplerParameteri(sampler, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
         });
-    auto const bind_texture_with_sampler = [](GLenum target, unsigned int slot, GLuint program, std::string const& name, GLuint texture, GLuint sampler) {
-        glActiveTexture(GL_TEXTURE0 + slot);
-        glBindTexture(target, texture);
-        glUniform1i(glGetUniformLocation(program, name.c_str()), static_cast<GLint>(slot));
-        glBindSampler(slot, sampler);
-    };
+    
 #endif
 
     //
@@ -381,7 +382,7 @@ project::Project::run()
             //
             // Pass 1: Render scene into the g-buffer 
             //
-            glCullFace(GL_FRONT);
+            glCullFace(GL_BACK);
             glDepthFunc(GL_LESS);
 
 
@@ -392,11 +393,6 @@ project::Project::run()
             }
 
             glBindFramebuffer(GL_FRAMEBUFFER, diffuse_fbo);
-            GLenum const diffuse_draw_buffers[1] = { GL_COLOR_ATTACHMENT0 };
-            glDrawBuffers(1, diffuse_draw_buffers);
-            auto status_env = glCheckFramebufferStatus(GL_FRAMEBUFFER);
-            if (status_env != GL_FRAMEBUFFER_COMPLETE)
-                LogError("Something went wrong with framebuffer %u", diffuse_fbo);
             glViewport(0, 0, constant::light_texture_res_x, constant::light_texture_res_y);
             glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
@@ -404,21 +400,12 @@ project::Project::run()
 
             for (auto const& element : solids)
                 element.render(light_matrix, element.get_transform().GetMatrix(), fill_diffuse_shader, no_extra_uniforms);
-            //solids[1].render(light_matrix, solids[1].get_transform().GetMatrix(), fill_diffuse_shader, no_extra_uniforms);
+            
+            
             if (utils::opengl::debug::isSupported())
             {
                 glPopDebugGroup();
             }
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -464,7 +451,7 @@ project::Project::run()
             glBindFramebuffer(GL_FRAMEBUFFER, environmentmap_fbo);
             GLenum const environment_draw_buffers[1] = { GL_COLOR_ATTACHMENT0 };
             glDrawBuffers(1, environment_draw_buffers);
-            status_env = glCheckFramebufferStatus(GL_FRAMEBUFFER);
+            auto status_env = glCheckFramebufferStatus(GL_FRAMEBUFFER);
             if (status_env != GL_FRAMEBUFFER_COMPLETE)
                 LogError("Something went wrong with framebuffer %u", environmentmap_fbo);
             glViewport(0, 0, constant::light_texture_res_x, constant::light_texture_res_y);
@@ -562,23 +549,44 @@ project::Project::run()
             GLStateInspection::CaptureSnapshot("Final render Pass");
 
 
-            auto const resolve_uniforms = [&sunColor, &sunDir, &seconds_nb, this](GLuint program) {
+            auto const resolve_uniforms = [&sunColor, &sunDir, &seconds_nb, this, &light_matrix, &framebuffer_width, &framebuffer_height](GLuint program) {
                 // COMMON
+                glUniformMatrix4fv(glGetUniformLocation(program, "view_projection_inverse"), 1, GL_FALSE,
+                    glm::value_ptr(mCamera.GetClipToWorldMatrix()));
                 glUniform3fv(glGetUniformLocation(program, "camera_position"), 1,
                     glm::value_ptr(mCamera.mWorld.GetTranslation()));
+                glUniformMatrix4fv(glGetUniformLocation(program, "shadow_view_projection"), 1, GL_FALSE,
+                    glm::value_ptr(light_matrix));
                 glUniform3fv(glGetUniformLocation(program, "sun_dir"), 1,
                     glm::value_ptr(sunDir));
+                glUniform2f(glGetUniformLocation(program, "shadowmap_texel_size"),
+                    1.0f / static_cast<float>(constant::light_texture_res_x),
+                    1.0f / static_cast<float>(constant::light_texture_res_y));
+                glUniform2f(glGetUniformLocation(program, "inv_res"),
+                    1.0f / static_cast<float>(framebuffer_width),
+                    1.0f / static_cast<float>(framebuffer_height));
 
                 // not active
                 glUniform1i(glGetUniformLocation(program, "is_water"), GL_FALSE);
             };
 
-            auto const resolve_uniforms_plus_waves = [&sunColor, &sunDir, &seconds_nb, this](GLuint program) {
+            auto const resolve_uniforms_plus_waves = [&sunColor, &sunDir, &seconds_nb, this, &light_matrix, &framebuffer_width, &framebuffer_height](GLuint program) {
                 // COMMON
+                glUniformMatrix4fv(glGetUniformLocation(program, "view_projection_inverse"), 1, GL_FALSE,
+                    glm::value_ptr(mCamera.GetClipToWorldMatrix()));
                 glUniform3fv(glGetUniformLocation(program, "camera_position"), 1,
                     glm::value_ptr(mCamera.mWorld.GetTranslation()));
+                glUniformMatrix4fv(glGetUniformLocation(program, "shadow_view_projection"), 1, GL_FALSE,
+                    glm::value_ptr(light_matrix));
                 glUniform3fv(glGetUniformLocation(program, "sun_dir"), 1,
                     glm::value_ptr(sunDir));
+                glUniform2f(glGetUniformLocation(program, "shadowmap_texel_size"),
+                    1.0f / static_cast<float>(constant::light_texture_res_x),
+                    1.0f / static_cast<float>(constant::light_texture_res_y));
+                glUniform2f(glGetUniformLocation(program, "inv_res"),
+                    1.0f / static_cast<float>(framebuffer_width),
+                    1.0f / static_cast<float>(framebuffer_height));
+
                 
 
                 // activate
@@ -601,6 +609,9 @@ project::Project::run()
                 glUniform1f(glGetUniformLocation(program, "wave2.Sharpness"), constant::waveTwo.Sharpness);
                 glUniform2fv(glGetUniformLocation(program, "wave2.Direction"), 1, glm::value_ptr(constant::waveTwo.Direction));
             };
+            glUseProgram(resolve_scene);
+            bind_texture_with_sampler(GL_TEXTURE_2D, 5, resolve_scene, "shadow_texture", shadowmap_texture, shadow_sampler);
+            
 
             for (auto const& element : solids)
                 element.render(mCamera.GetWorldToClipMatrix(), element.get_transform().GetMatrix(), resolve_scene, resolve_uniforms);
