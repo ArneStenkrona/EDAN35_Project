@@ -41,7 +41,7 @@ struct WaveCalculation {
     vec4 binormal;
 };
 
-WaveCalculation getVertexWaveData(vec2 uv, Wave[2] waves, float t) {
+WaveCalculation getVertexWaveData(vec2 xy, Wave[2] waves, float t) {
 
     float height = 0;
     float dHdx = 0;
@@ -49,7 +49,7 @@ WaveCalculation getVertexWaveData(vec2 uv, Wave[2] waves, float t) {
     Wave w;
     for(int i = 0; i < 2; i++) {
         w = waves[i];
-        float dirFact = w.Direction.x * uv.x + w.Direction.y * uv.y;
+        float dirFact = w.Direction.x * xy.x + w.Direction.y * xy.y;
         float sinFact = sin(dirFact * w.Frequency + t * w.Phase) * 0.5 + 0.5;
         float cosFact = 0.5 * w.Sharpness * w.Frequency * w.Amplitude * cos(dirFact * w.Frequency + t * w.Phase);
         height += w.Amplitude * pow(sinFact, w.Sharpness);
@@ -60,7 +60,7 @@ WaveCalculation getVertexWaveData(vec2 uv, Wave[2] waves, float t) {
 
     // Fill output in struct
     WaveCalculation result;
-    result.vertex = vec4(vertex + vec3(0, height, 0), 1.0);
+    result.vertex = vec4(vertex + normal * height, 1.0);
     // Convert from tangent space to model space
     result.normal = vec4(vec3(-dHdx, 1, -dHdz), 0.0);
     result.tangent = vec4(vec3(1, dHdx, 0), 0.0);
@@ -77,9 +77,9 @@ void main() {
         Wave[2] waves; waves[0] = wave1; waves[1] = wave2;
         WaveCalculation vertexData = getVertexWaveData(texcoord.xy, waves, time);
 
-        vs_out.normal = normalize(vertexData.normal.xyz);
-        vs_out.tangent = normalize(vertexData.tangent.xyz);
-        vs_out.binormal = normalize(vertexData.binormal.xyz);
+        vs_out.normal = vertexData.normal.xyz;
+        vs_out.tangent = vertexData.tangent.xyz;
+        vs_out.binormal = vertexData.binormal.xyz;
         worldPos = vertex_model_to_world * vertexData.vertex;
     } 
     else 

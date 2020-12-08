@@ -10,6 +10,7 @@ uniform sampler2D normals_texture;
 uniform sampler2D opacity_texture;
 uniform mat4 normal_model_to_world;
 
+// new
 uniform bool is_water;
 
 uniform mat4 view_projection_inverse;
@@ -20,6 +21,9 @@ uniform vec3 sun_dir;
 
 uniform vec2 inv_res;
 uniform sampler2DShadow shadow_texture;
+uniform vec2 shadowmap_texel_size;
+
+uniform sampler2D causticmap_texture;
 
 in VS_OUT {
 	vec3 normal;
@@ -38,9 +42,7 @@ void main()
 
 	// Diffuse color
 	vec4 geometry_diffuse = vec4(0.0f);
-	if (is_water)
-		geometry_diffuse = vec4(0, 0.5, 0.5, 1.0);
-	else if (has_diffuse_texture)
+	if (has_diffuse_texture)
 		geometry_diffuse = texture(diffuse_texture, fs_in.texcoord);
 
 	// Specular color
@@ -51,7 +53,7 @@ void main()
 	// Worldspace normal
 	vec3 normal;
 
-	if (has_normals_texture) {
+	if (has_normals_texture && !is_water) {
 		vec3 t = normalize(fs_in.tangent);
 		vec3 b = normalize(fs_in.binormal);
 		vec3 n = normalize(fs_in.normal);
@@ -74,7 +76,10 @@ void main()
 
 	if (is_water) 
 	{
-		
+		const vec3 deep = vec3(0,0,0.1);
+		const vec3 shallow = vec3(0, 0.5, 0.5);
+		float facing = max(dot(n,v), 0);
+		result = mix(deep, shallow, facing);
 	}
 	else
 	{
@@ -88,11 +93,34 @@ void main()
 		float shadowMultiplier = 0.0;
 		vec3 sampler_centre = (projectedSampler.xyz + 1.0) / 2.0;
 
-		if (sampler_centre.x >= 0 && sampler_centre.x <= 1.0 && sampler_centre.y >= 0 && sampler_centre.y <= 1.0) {
-			shadowMultiplier = texture(shadow_texture, sampler_centre);
+		int steps = 5;
+		int samples = (steps*2 + 1) * (steps*2 + 1);
+		vec3 samplerPos;
+		for (int i = -steps; i <= steps; i++)
+		{
+			float dy = i * shadowmap_texel_size.x;
+			for (int j = -steps; j <= steps; j++)
+			{
+				float dx = j * shadowmap_texel_size.y;
+				if (sampler_centre.x + dx >= 0 && sampler_centre.x + dx <= 1.0 && sampler_centre.y + dy >= 0 && sampler_centre.y + dy <= 1.0) {
+					samplerPos = sampler_centre; samplerPos.x += dx; samplerPos.y += dy;
+					shadowMultiplier += texture(shadow_texture, samplerPos);
+				} else {
+					samples--;
+				} 
+			}
 		}
 
+		shadowMultiplier /= samples;
+	
+		// bias against shadow acne
+		if (shadowMultiplier < 0.05)
+			shadowMultiplier = 0;
+
 		result *= shadowMultiplier;
+		
+		//Caustics term but wrongly done atm.
+		//result *= texture(causticmap_texture, uv).xyz;
 	}
 
 	colour = vec4(result, 1.0);

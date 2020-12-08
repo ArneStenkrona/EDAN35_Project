@@ -611,7 +611,7 @@ project::Project::run()
             };
             glUseProgram(resolve_scene);
             bind_texture_with_sampler(GL_TEXTURE_2D, 5, resolve_scene, "shadow_texture", shadowmap_texture, shadow_sampler);
-            
+            bind_texture_with_sampler(GL_TEXTURE_2D, 6, resolve_scene, "causticmap_texture", causticmap_texture, default_sampler);
 
             for (auto const& element : solids)
                 element.render(mCamera.GetWorldToClipMatrix(), element.get_transform().GetMatrix(), resolve_scene, resolve_uniforms);
