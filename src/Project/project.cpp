@@ -45,6 +45,21 @@ namespace constant
 
     constexpr float  light_intensity = 72.0f;
 
+    struct Wave {
+        float Amplitude;
+        float Frequency;
+        float Phase;
+        float Sharpness;
+        glm::vec2 Direction;
+
+        glm::vec2 padding;
+
+        Wave(float A, float f, float phase, float sharpness, float dx, float dz) 
+            : Amplitude(A), Frequency(f), Phase(phase), Sharpness(sharpness), Direction(dx, dz), padding(0,0) {};
+    };
+
+    Wave waveOne(0.5, 2 * 10, 0.5, 2.0, -1.0, 0.0);
+    Wave waveTwo(0.25, 4 * 10, 1.3, 2.0, -0.7, 0.7);
 }
 
 static bonobo::mesh_data loadCone();
@@ -238,7 +253,9 @@ project::Project::run()
     auto const normal_texture = bonobo::createTexture(framebuffer_width, framebuffer_height);
     auto const light_diffuse_contribution_texture = bonobo::createTexture(framebuffer_width, framebuffer_height);
     auto const light_specular_contribution_texture = bonobo::createTexture(framebuffer_width, framebuffer_height);
+
     auto const depth_texture = bonobo::createTexture(framebuffer_width, framebuffer_height, GL_TEXTURE_2D, GL_DEPTH_COMPONENT32F, GL_DEPTH_COMPONENT, GL_FLOAT);
+
     auto const shadowmap_texture = bonobo::createTexture(constant::shadowmap_res_x, constant::shadowmap_res_y, GL_TEXTURE_2D, GL_DEPTH_COMPONENT32F, GL_DEPTH_COMPONENT, GL_FLOAT);
     auto const environmentmap_texture = bonobo::createTexture(constant::environmentmap_res_x, constant::environmentmap_res_y, GL_TEXTURE_2D, GL_RGBA32F);
     auto const causticmap_texture = bonobo::createTexture(constant::causticmap_res_x, constant::causticmap_res_y/*, GL_TEXTURE_2D, GL_R8*/);
@@ -398,16 +415,62 @@ project::Project::run()
 
             GLStateInspection::CaptureSnapshot("Filling Pass");
 
+            auto const deffered_set_uniforms_non_water = [&sunColor, &sunDir, &seconds_nb](GLuint program) {
+                // not active
+                glUniform1i(glGetUniformLocation(program, "is_water"), GL_FALSE);
+            };
+
+            auto const deffered_set_uniforms_water = [&sunColor, &sunDir, &seconds_nb](GLuint program) {
+                // activate
+                glUniform1i(glGetUniformLocation(program, "is_water"), GL_TRUE);
+
+                // time uniform
+                glUniform1f(glGetUniformLocation(program, "time"), seconds_nb);
+
+                // Wave 1
+                glUniform1f(glGetUniformLocation(program, "wave1.Amplitude"), constant::waveOne.Amplitude);
+                glUniform1f(glGetUniformLocation(program, "wave1.Frequency"), constant::waveOne.Frequency);
+                glUniform1f(glGetUniformLocation(program, "wave1.Phase"), constant::waveOne.Phase);
+                glUniform1f(glGetUniformLocation(program, "wave1.Sharpness"), constant::waveOne.Sharpness);
+                glUniform2fv(glGetUniformLocation(program, "wave1.Direction"), 1, glm::value_ptr(constant::waveOne.Direction));
+
+                // Wave 2
+                glUniform1f(glGetUniformLocation(program, "wave2.Amplitude"), constant::waveTwo.Amplitude);
+                glUniform1f(glGetUniformLocation(program, "wave2.Frequency"), constant::waveTwo.Frequency);
+                glUniform1f(glGetUniformLocation(program, "wave2.Phase"), constant::waveTwo.Phase);
+                glUniform1f(glGetUniformLocation(program, "wave2.Sharpness"), constant::waveTwo.Sharpness);
+                glUniform2fv(glGetUniformLocation(program, "wave2.Direction"), 1, glm::value_ptr(constant::waveTwo.Direction));
+            };
+
             for (auto const& element : solids)
-                element.render(mCamera.GetWorldToClipMatrix(), element.get_transform().GetMatrix(), fill_gbuffer_shader, set_uniforms);
+                element.render(mCamera.GetWorldToClipMatrix(), element.get_transform().GetMatrix(), fill_gbuffer_shader, deffered_set_uniforms_non_water);
+// UNCOMMENT TO RENDER WATER
+#if 1
+            for (auto const& element : transparents)
+                element.render(mCamera.GetWorldToClipMatrix(), element.get_transform().GetMatrix(), fill_gbuffer_shader, deffered_set_uniforms_water);
+            glCullFace(GL_FRONT);
+            for (auto const& element : transparents)
+                element.render(mCamera.GetWorldToClipMatrix(), element.get_transform().GetMatrix(), fill_gbuffer_shader, deffered_set_uniforms_water);
+#endif
             if (utils::opengl::debug::isSupported())
             {
                 glPopDebugGroup();
             }
 
             glCullFace(GL_FRONT);
+
+
+
+
+
+
+
+
+
+
+
             //
-            // Pass 2: Generate shadowmaps and accumulate lights' contribution
+            // Pass 2: Generate shadow map for sun
             //
             glBindFramebuffer(GL_FRAMEBUFFER, light_fbo);
             GLenum light_draw_buffers[2] = { GL_COLOR_ATTACHMENT0, GL_COLOR_ATTACHMENT1 };
@@ -418,9 +481,6 @@ project::Project::run()
             /* RENDER DIRECTIONAL LIGHT */
             auto light_matrix = lightProjection * lightTransform.GetMatrixInverse();
 
-            //
-            // Pass 2.1: Generate shadow map for sun
-            //
             if (utils::opengl::debug::isSupported())
             {
                 std::string const group_name = "Create shadow map Sun";
@@ -434,6 +494,7 @@ project::Project::run()
 
             for (auto const& element : solids)
                 element.render(light_matrix, element.get_transform().GetMatrix(), fill_shadowmap_shader, set_uniforms);
+
             if (utils::opengl::debug::isSupported())
             {
                 glPopDebugGroup();
@@ -443,6 +504,7 @@ project::Project::run()
             glDepthMask(GL_FALSE);
             glBlendEquationSeparate(GL_FUNC_ADD, GL_MIN);
             glBlendFuncSeparate(GL_ONE, GL_ONE, GL_ONE, GL_ONE);
+
             //
             // Pass 2.2: Accumulate light i contribution
             if (utils::opengl::debug::isSupported())
@@ -526,7 +588,7 @@ project::Project::run()
             {
                 glPopDebugGroup();
             }
-            //------------
+
             //
             // Pass 2.3: Generate caustic map for sun
             //
@@ -546,13 +608,10 @@ project::Project::run()
             glViewport(0, 0, constant::causticmap_res_x, constant::causticmap_res_y);
 
             glClear(GL_DEPTH_BUFFER_BIT | GL_COLOR_BUFFER_BIT);
-            // We need to bind the environment map
-            //glUseProgram(fill_causticmap_shader);
-            //bind_texture_with_sampler(GL_TEXTURE_2D, 0, fill_causticmap_shader, "environmentmap_texture", environmentmap_texture, default_sampler);
 
             GLStateInspection::CaptureSnapshot("Filling Pass");
-
-            auto const caustic_set_uniforms = [&sunColor, &sunDir](GLuint program) {
+            
+            auto const caustic_set_uniforms = [&sunColor, &sunDir, &seconds_nb](GLuint program) {
                 glUniform2f(glGetUniformLocation(program, "inv_res"),
                     1.0f / static_cast<float>(constant::causticmap_res_x),
                     1.0f / static_cast<float>(constant::causticmap_res_y));
@@ -561,16 +620,46 @@ project::Project::run()
                 glUniform2f(glGetUniformLocation(program, "environmentmap_texel_size"),
                     1.0f / static_cast<float>(constant::environmentmap_res_x),
                     1.0f / static_cast<float>(constant::environmentmap_res_y));
+
+                // time uniform
+                glUniform1f(glGetUniformLocation(program, "time"), seconds_nb);
+
+                // Wave 1
+                glUniform1f(glGetUniformLocation(program, "wave1.Amplitude"), constant::waveOne.Amplitude);
+                glUniform1f(glGetUniformLocation(program, "wave1.Frequency"), constant::waveOne.Frequency);
+                glUniform1f(glGetUniformLocation(program, "wave1.Phase"), constant::waveOne.Phase);
+                glUniform1f(glGetUniformLocation(program, "wave1.Sharpness"), constant::waveOne.Sharpness);
+                glUniform2fv(glGetUniformLocation(program, "wave1.Direction"), 1, glm::value_ptr(constant::waveOne.Direction));
+
+                // Wave 2
+                glUniform1f(glGetUniformLocation(program, "wave2.Amplitude"), constant::waveTwo.Amplitude);
+                glUniform1f(glGetUniformLocation(program, "wave2.Frequency"), constant::waveTwo.Frequency);
+                glUniform1f(glGetUniformLocation(program, "wave2.Phase"), constant::waveTwo.Phase);
+                glUniform1f(glGetUniformLocation(program, "wave2.Sharpness"), constant::waveTwo.Sharpness);
+                glUniform2fv(glGetUniformLocation(program, "wave2.Direction"), 1, glm::value_ptr(constant::waveTwo.Direction));
             };
 
-            for (auto const& element : transparents)
-                element.render(light_matrix, element.get_transform().GetMatrix(), fill_causticmap_shader, caustic_set_uniforms);
+            //for (auto const& element : transparents)
+            //    element.render(light_matrix, element.get_transform().GetMatrix(), fill_causticmap_shader, caustic_set_uniforms);
             if (utils::opengl::debug::isSupported())
             {
                 glPopDebugGroup();
             }
             //------------
             //* WATER RENDERING? */
+
+
+
+
+
+
+
+
+
+
+
+
+
             glCullFace(GL_BACK);
             glDepthFunc(GL_ALWAYS);
             //

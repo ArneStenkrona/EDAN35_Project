@@ -9,6 +9,7 @@ uniform sampler2D specular_texture;
 uniform sampler2D normals_texture;
 uniform sampler2D opacity_texture;
 uniform mat4 normal_model_to_world;
+uniform bool is_water;
 
 in VS_OUT {
 	vec3 normal;
@@ -29,7 +30,9 @@ void main()
 
 	// Diffuse color
 	geometry_diffuse = vec4(0.0f);
-	if (has_diffuse_texture)
+	if (is_water)
+		geometry_diffuse = vec4(0, 0.5, 0.5, 1.0);
+	else if (has_diffuse_texture)
 		geometry_diffuse = texture(diffuse_texture, fs_in.texcoord);
 
 	// Specular color

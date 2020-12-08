@@ -81,14 +81,6 @@ void main()
 	
 	vec4 lightColour = shadowMultiplier * vec4(light_color, 1.0);
 
-	if (true) 
-	{
-		light_diffuse_contribution  = diffuse * lightColour;
-		light_specular_contribution = specular * lightColour;
-	}
-	else 
-	{
-		light_diffuse_contribution = vec4(1.0, 0.0, 0.0, 1.0);
-		light_specular_contribution = vec4(0.0, 0.0, 1.0, 1.0);
-	}
+	light_diffuse_contribution  = diffuse * lightColour;
+	light_specular_contribution = specular * lightColour;
 }
