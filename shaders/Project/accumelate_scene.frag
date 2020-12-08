@@ -9,13 +9,17 @@ uniform sampler2D specular_texture;
 uniform sampler2D normals_texture;
 uniform sampler2D opacity_texture;
 uniform mat4 normal_model_to_world;
+
 uniform bool is_water;
+uniform vec3 camera_position;
+uniform vec3 sun_dir;
 
 in VS_OUT {
 	vec3 normal;
 	vec2 texcoord;
 	vec3 tangent;
 	vec3 binormal;
+	vec4 worldPos;
 } fs_in;
 
 out vec4 colour;
@@ -51,5 +55,14 @@ void main()
 		normal = fs_in.normal;
 	}
 
-	colour = geometry_diffuse;
+	vec3 result = geometry_diffuse.xyz;
+
+	vec3 n = normalize(normal);
+	vec3 v = normalize(camera_position - fs_in.worldPos.xyz);
+	vec3 l = normalize(-sun_dir);
+	vec3 r = normalize(reflect(-l,n));
+
+	float diffuse = dot(n,l);
+
+	colour = diffuse * vec4(result, 1.0);
 }

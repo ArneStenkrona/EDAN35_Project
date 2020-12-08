@@ -16,6 +16,7 @@ out VS_OUT {
 	vec2 texcoord;
 	vec3 tangent;
 	vec3 binormal;
+    vec4 worldPos;
 } vs_out;
 
 
@@ -69,7 +70,8 @@ WaveCalculation getVertexWaveData(vec2 uv, Wave[2] waves, float t) {
 
 void main() {
 
-	vs_out.texcoord = texcoord.xy;
+	
+    vec4 worldPos;
     if (is_water) 
     {
         Wave[2] waves; waves[0] = wave1; waves[1] = wave2;
@@ -78,14 +80,18 @@ void main() {
         vs_out.normal = normalize(vertexData.normal.xyz);
         vs_out.tangent = normalize(vertexData.tangent.xyz);
         vs_out.binormal = normalize(vertexData.binormal.xyz);
-        gl_Position = vertex_world_to_clip * vertex_model_to_world * vertexData.vertex;
+        worldPos = vertex_model_to_world * vertexData.vertex;
     } 
     else 
     {
         vs_out.normal   = normalize(normal);
 	    vs_out.tangent  = normalize(tangent);
 	    vs_out.binormal = normalize(binormal);
-	    gl_Position = vertex_world_to_clip * vertex_model_to_world * vec4(vertex, 1.0);
+        worldPos = vertex_model_to_world * vec4(vertex, 1.0);
     }
+    // common
+    vs_out.texcoord = texcoord.xy;
+    vs_out.worldPos = worldPos;
+    gl_Position = vertex_world_to_clip * worldPos;
 	
 }
