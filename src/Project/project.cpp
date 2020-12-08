@@ -171,8 +171,8 @@ project::Project::run()
 
     GLuint fill_gbuffer_shader = 0u;
     program_manager.CreateAndRegisterProgram("Fill G-Buffer",
-        { { ShaderType::vertex, "EDAN35/fill_gbuffer.vert" },
-          { ShaderType::fragment, "EDAN35/fill_gbuffer.frag" } },
+        { { ShaderType::vertex, "Project/fill_gbuffer.vert" },
+          { ShaderType::fragment, "Project/fill_gbuffer.frag" } },
         fill_gbuffer_shader);
     if (fill_gbuffer_shader == 0u) {
         LogError("Failed to load G-buffer filling shader");
@@ -191,8 +191,8 @@ project::Project::run()
 
     GLuint fill_environmentmap_shader = 0u;
     program_manager.CreateAndRegisterProgram("Fill environment map",
-        { { ShaderType::vertex, "EDAN35/fill_environmentmap.vert" },
-          { ShaderType::fragment, "EDAN35/fill_environmentmap.frag" } },
+        { { ShaderType::vertex, "Project/fill_environmentmap.vert" },
+          { ShaderType::fragment, "Project/fill_environmentmap.frag" } },
         fill_environmentmap_shader);
     if (fill_environmentmap_shader == 0u) {
         LogError("Failed to load environmentmap filling shader");
@@ -201,34 +201,23 @@ project::Project::run()
 
     GLuint fill_causticmap_shader = 0u;
     program_manager.CreateAndRegisterProgram("Fill caustic map",
-        { { ShaderType::vertex, "EDAN35/fill_causticmap.vert" },
-          { ShaderType::fragment, "EDAN35/fill_causticmap.frag" } },
+        { { ShaderType::vertex, "Project/fill_causticmap.vert" },
+          { ShaderType::fragment, "Project/fill_causticmap.frag" } },
         fill_causticmap_shader);
     if (fill_causticmap_shader == 0u) {
         LogError("Failed to load causticmap filling shader");
         return;
     }
 
-    GLuint accumulate_lights_shader = 0u;
-    program_manager.CreateAndRegisterProgram("Accumulate light",
-        { { ShaderType::vertex, "EDAN35/accumulate_lights.vert" },
-          { ShaderType::fragment, "EDAN35/accumulate_lights.frag" } },
-        accumulate_lights_shader);
-    if (accumulate_lights_shader == 0u) {
-        LogError("Failed to load lights accumulating shader");
-        return;
-    }
-
-    GLuint resolve_deferred_shader = 0u;
-    program_manager.CreateAndRegisterProgram("Resolve deferred",
-        { { ShaderType::vertex, "EDAN35/resolve_deferred.vert" },
-          { ShaderType::fragment, "EDAN35/resolve_deferred.frag" } },
-        resolve_deferred_shader);
-    if (resolve_deferred_shader == 0u) {
+    GLuint resolve_scene = 0u;
+    program_manager.CreateAndRegisterProgram("Accumelate Scene",
+        { { ShaderType::vertex, "Project/accumelate_scene.vert" },
+          { ShaderType::fragment, "Project/accumelate_scene.frag" } },
+        resolve_scene);
+    if (resolve_scene == 0u) {
         LogError("Failed to load deferred resolution shader");
         return;
     }
-
 
     GLuint render_light_cones_shader = 0u;
     program_manager.CreateAndRegisterProgram("Render light box",
@@ -240,7 +229,7 @@ project::Project::run()
         return;
     }
 
-    auto const set_uniforms = [](GLuint /*program*/) {};
+    auto const no_extra_uniforms = [](GLuint /*program*/) {};
 
     int framebuffer_width, framebuffer_height;
     glfwGetFramebufferSize(window, &framebuffer_width, &framebuffer_height);
@@ -249,16 +238,14 @@ project::Project::run()
     // Setup textures
     //
     auto const diffuse_texture = bonobo::createTexture(framebuffer_width, framebuffer_height);
-    auto const specular_texture = bonobo::createTexture(framebuffer_width, framebuffer_height);
-    auto const normal_texture = bonobo::createTexture(framebuffer_width, framebuffer_height);
-    auto const light_diffuse_contribution_texture = bonobo::createTexture(framebuffer_width, framebuffer_height);
-    auto const light_specular_contribution_texture = bonobo::createTexture(framebuffer_width, framebuffer_height);
-
-    auto const depth_texture = bonobo::createTexture(framebuffer_width, framebuffer_height, GL_TEXTURE_2D, GL_DEPTH_COMPONENT32F, GL_DEPTH_COMPONENT, GL_FLOAT);
-
     auto const shadowmap_texture = bonobo::createTexture(constant::shadowmap_res_x, constant::shadowmap_res_y, GL_TEXTURE_2D, GL_DEPTH_COMPONENT32F, GL_DEPTH_COMPONENT, GL_FLOAT);
     auto const environmentmap_texture = bonobo::createTexture(constant::environmentmap_res_x, constant::environmentmap_res_y, GL_TEXTURE_2D, GL_RGBA32F);
     auto const causticmap_texture = bonobo::createTexture(constant::causticmap_res_x, constant::causticmap_res_y/*, GL_TEXTURE_2D, GL_R8*/);
+
+    for (auto& node : solids) {
+        node.add_texture("shadowmap_texture", shadowmap_texture, GL_TEXTURE_2D);
+        node.add_texture("causticmap_texture", causticmap_texture, GL_TEXTURE_2D);
+    }
 
     for (auto & node: transparents) {
         node.add_texture("environmentmap_texture", environmentmap_texture, GL_TEXTURE_2D);
@@ -267,12 +254,10 @@ project::Project::run()
     //
     // Setup FBOs
     //
-    auto const deferred_fbo = bonobo::createFBO({ diffuse_texture, specular_texture, normal_texture }, depth_texture);
+    auto const deferred_fbo = bonobo::createFBO({diffuse_texture});
     auto const shadowmap_fbo = bonobo::createFBO({}, shadowmap_texture);
     auto const environmentmap_fbo = bonobo::createFBO({ environmentmap_texture });
     auto const causticmap_fbo = bonobo::createFBO({ causticmap_texture });
-    auto const light_fbo = bonobo::createFBO({ light_diffuse_contribution_texture, light_specular_contribution_texture }, depth_texture);
-
     //
     // Setup samplers
     //
@@ -394,7 +379,7 @@ project::Project::run()
         if (!shader_reload_failed) {
             glDepthFunc(GL_LESS);
             //
-            // Pass 1: Render scene into the g-buffer
+            // Pass 1: Render scene into the g-buffer 
             //
             if (utils::opengl::debug::isSupported())
             {
@@ -415,68 +400,30 @@ project::Project::run()
 
             GLStateInspection::CaptureSnapshot("Filling Pass");
 
-            auto const deffered_set_uniforms_non_water = [&sunColor, &sunDir, &seconds_nb](GLuint program) {
-                // not active
-                glUniform1i(glGetUniformLocation(program, "is_water"), GL_FALSE);
-            };
-
-            auto const deffered_set_uniforms_water = [&sunColor, &sunDir, &seconds_nb](GLuint program) {
-                // activate
-                glUniform1i(glGetUniformLocation(program, "is_water"), GL_TRUE);
-
-                // time uniform
-                glUniform1f(glGetUniformLocation(program, "time"), seconds_nb);
-
-                // Wave 1
-                glUniform1f(glGetUniformLocation(program, "wave1.Amplitude"), constant::waveOne.Amplitude);
-                glUniform1f(glGetUniformLocation(program, "wave1.Frequency"), constant::waveOne.Frequency);
-                glUniform1f(glGetUniformLocation(program, "wave1.Phase"), constant::waveOne.Phase);
-                glUniform1f(glGetUniformLocation(program, "wave1.Sharpness"), constant::waveOne.Sharpness);
-                glUniform2fv(glGetUniformLocation(program, "wave1.Direction"), 1, glm::value_ptr(constant::waveOne.Direction));
-
-                // Wave 2
-                glUniform1f(glGetUniformLocation(program, "wave2.Amplitude"), constant::waveTwo.Amplitude);
-                glUniform1f(glGetUniformLocation(program, "wave2.Frequency"), constant::waveTwo.Frequency);
-                glUniform1f(glGetUniformLocation(program, "wave2.Phase"), constant::waveTwo.Phase);
-                glUniform1f(glGetUniformLocation(program, "wave2.Sharpness"), constant::waveTwo.Sharpness);
-                glUniform2fv(glGetUniformLocation(program, "wave2.Direction"), 1, glm::value_ptr(constant::waveTwo.Direction));
-            };
-
             for (auto const& element : solids)
-                element.render(mCamera.GetWorldToClipMatrix(), element.get_transform().GetMatrix(), fill_gbuffer_shader, deffered_set_uniforms_non_water);
-// UNCOMMENT TO RENDER WATER
-#if 1
-            for (auto const& element : transparents)
-                element.render(mCamera.GetWorldToClipMatrix(), element.get_transform().GetMatrix(), fill_gbuffer_shader, deffered_set_uniforms_water);
-            glCullFace(GL_FRONT);
-            for (auto const& element : transparents)
-                element.render(mCamera.GetWorldToClipMatrix(), element.get_transform().GetMatrix(), fill_gbuffer_shader, deffered_set_uniforms_water);
-#endif
+                element.render(mCamera.GetWorldToClipMatrix(), element.get_transform().GetMatrix(), fill_gbuffer_shader, no_extra_uniforms);
             if (utils::opengl::debug::isSupported())
             {
                 glPopDebugGroup();
             }
 
+
+
+
+
+
+
+
+
+
+
+
+
+            //
+            // Pass 2.0: Generate shadow map for sun
+            //
+
             glCullFace(GL_FRONT);
-
-
-
-
-
-
-
-
-
-
-
-            //
-            // Pass 2: Generate shadow map for sun
-            //
-            glBindFramebuffer(GL_FRAMEBUFFER, light_fbo);
-            GLenum light_draw_buffers[2] = { GL_COLOR_ATTACHMENT0, GL_COLOR_ATTACHMENT1 };
-            glDrawBuffers(2, light_draw_buffers);
-            glViewport(0, 0, framebuffer_width, framebuffer_height);
-			glClear(GL_COLOR_BUFFER_BIT);
 
             /* RENDER DIRECTIONAL LIGHT */
             auto light_matrix = lightProjection * lightTransform.GetMatrixInverse();
@@ -493,75 +440,19 @@ project::Project::run()
             GLStateInspection::CaptureSnapshot("Shadow Map Generation");
 
             for (auto const& element : solids)
-                element.render(light_matrix, element.get_transform().GetMatrix(), fill_shadowmap_shader, set_uniforms);
+                element.render(light_matrix, element.get_transform().GetMatrix(), fill_shadowmap_shader, no_extra_uniforms);
 
             if (utils::opengl::debug::isSupported())
             {
                 glPopDebugGroup();
             }
-            glEnable(GL_BLEND);
-            glDepthFunc(GL_GREATER);
-            glDepthMask(GL_FALSE);
-            glBlendEquationSeparate(GL_FUNC_ADD, GL_MIN);
-            glBlendFuncSeparate(GL_ONE, GL_ONE, GL_ONE, GL_ONE);
+            
+
+
+
 
             //
-            // Pass 2.2: Accumulate light i contribution
-            if (utils::opengl::debug::isSupported())
-            {
-                std::string const group_name = "Accumulate light Sun";
-                glPushDebugGroup(GL_DEBUG_SOURCE_APPLICATION, 0u, group_name.size(), group_name.data());
-            }
-            glBindFramebuffer(GL_FRAMEBUFFER, light_fbo);
-            glDrawBuffers(2, light_draw_buffers);
-            glUseProgram(accumulate_lights_shader);
-            glViewport(0, 0, framebuffer_width, framebuffer_height);
-
-            auto const spotlight_set_uniforms = [framebuffer_width, framebuffer_height, this, &light_matrix, &sunColor, &sunDir](GLuint program) {
-                glUniform2f(glGetUniformLocation(program, "inv_res"),
-                    1.0f / static_cast<float>(framebuffer_width),
-                    1.0f / static_cast<float>(framebuffer_height));
-                glUniformMatrix4fv(glGetUniformLocation(program, "view_projection_inverse"), 1, GL_FALSE,
-                    glm::value_ptr(mCamera.GetClipToWorldMatrix()));
-                glUniform3fv(glGetUniformLocation(program, "camera_position"), 1,
-                    glm::value_ptr(mCamera.mWorld.GetTranslation()));
-                glUniformMatrix4fv(glGetUniformLocation(program, "shadow_view_projection"), 1, GL_FALSE,
-                    glm::value_ptr(light_matrix));
-                glUniform3fv(glGetUniformLocation(program, "light_color"), 1, glm::value_ptr(sunColor));
-                //glUniform3fv(glGetUniformLocation(program, "light_position"), 1, glm::value_ptr(lightTransform.GetTranslation()));
-                //glUniform3fv(glGetUniformLocation(program, "light_direction"), 1, glm::value_ptr(lightTransform.GetFront()));
-                glUniform3fv(glGetUniformLocation(program, "light_direction"), 1, glm::value_ptr(sunDir));
-                glUniform1f(glGetUniformLocation(program, "light_intensity"), constant::light_intensity);
-                //glUniform1f(glGetUniformLocation(program, "light_angle_falloff"), constant::light_angle_falloff);
-                glUniform2f(glGetUniformLocation(program, "shadowmap_texel_size"),
-                    1.0f / static_cast<float>(constant::shadowmap_res_x),
-                    1.0f / static_cast<float>(constant::shadowmap_res_y));
-            };
-
-            bind_texture_with_sampler(GL_TEXTURE_2D, 0, accumulate_lights_shader, "depth_texture", depth_texture, depth_sampler);
-            bind_texture_with_sampler(GL_TEXTURE_2D, 1, accumulate_lights_shader, "normal_texture", normal_texture, default_sampler);
-            bind_texture_with_sampler(GL_TEXTURE_2D, 2, accumulate_lights_shader, "shadow_texture", shadowmap_texture, shadow_sampler);
-
-            GLStateInspection::CaptureSnapshot("Accumulating");
-
-
-            box.render(mCamera.GetWorldToClipMatrix(), lightTransform.GetMatrix() * boxScale,
-                accumulate_lights_shader, spotlight_set_uniforms);
-
-            glBindSampler(2u, 0u);
-            glBindSampler(1u, 0u);
-            glBindSampler(0u, 0u);
-
-            glDepthMask(GL_TRUE);
-            glDepthFunc(GL_LESS);
-            glDisable(GL_BLEND);
-            if (utils::opengl::debug::isSupported())
-            {
-                glPopDebugGroup();
-            }
-
-            //
-            // Pass 2.3: Generate environment map for sun
+            // Pass 3.0: Generate environment map for sun
             //
             glCullFace(GL_BACK);
             if (utils::opengl::debug::isSupported())
@@ -583,14 +474,14 @@ project::Project::run()
             GLStateInspection::CaptureSnapshot("Filling Pass");
 
             for (auto const& element : solids)
-                element.render(light_matrix, element.get_transform().GetMatrix(), fill_environmentmap_shader, set_uniforms);
+                element.render(light_matrix, element.get_transform().GetMatrix(), fill_environmentmap_shader, no_extra_uniforms);
             if (utils::opengl::debug::isSupported())
             {
                 glPopDebugGroup();
             }
 
             //
-            // Pass 2.3: Generate caustic map for sun
+            // Pass 3.1: Generate caustic map for sun
             //
             glCullFace(GL_BACK);
             if (utils::opengl::debug::isSupported())
@@ -639,14 +530,12 @@ project::Project::run()
                 glUniform2fv(glGetUniformLocation(program, "wave2.Direction"), 1, glm::value_ptr(constant::waveTwo.Direction));
             };
 
-            //for (auto const& element : transparents)
-            //    element.render(light_matrix, element.get_transform().GetMatrix(), fill_causticmap_shader, caustic_set_uniforms);
+            for (auto const& element : transparents)
+                element.render(light_matrix, element.get_transform().GetMatrix(), fill_causticmap_shader, caustic_set_uniforms);
             if (utils::opengl::debug::isSupported())
             {
                 glPopDebugGroup();
             }
-            //------------
-            //* WATER RENDERING? */
 
 
 
@@ -660,39 +549,67 @@ project::Project::run()
 
 
 
+
+
+            //
+            // Pass 4: Render final scene
+            //
             glCullFace(GL_BACK);
-            glDepthFunc(GL_ALWAYS);
-            //
-            // Pass 3: Compute final image using both the g-buffer and  the light accumulation buffer
-            //
+            glDepthFunc(GL_LESS);
+
             if (utils::opengl::debug::isSupported())
             {
-                std::string const group_name = "Resolve";
+                std::string const group_name = "Resolve scene";
                 glPushDebugGroup(GL_DEBUG_SOURCE_APPLICATION, 0u, group_name.size(), group_name.data());
             }
+
             glBindFramebuffer(GL_FRAMEBUFFER, 0u);
-            glUseProgram(resolve_deferred_shader);
+            glUseProgram(resolve_scene);
             glViewport(0, 0, framebuffer_width, framebuffer_height);
-            // XXX: Is any clearing needed?
+            glClear(GL_DEPTH_BUFFER_BIT | GL_COLOR_BUFFER_BIT);
 
-            bind_texture_with_sampler(GL_TEXTURE_2D, 0, resolve_deferred_shader, "diffuse_texture", diffuse_texture, default_sampler);
-            bind_texture_with_sampler(GL_TEXTURE_2D, 1, resolve_deferred_shader, "specular_texture", specular_texture, default_sampler);
-            bind_texture_with_sampler(GL_TEXTURE_2D, 2, resolve_deferred_shader, "light_d_texture", light_diffuse_contribution_texture, default_sampler);
-            bind_texture_with_sampler(GL_TEXTURE_2D, 3, resolve_deferred_shader, "light_s_texture", light_specular_contribution_texture, default_sampler);
-            bind_texture_with_sampler(GL_TEXTURE_2D, 4, resolve_deferred_shader, "depth_texture", depth_texture, default_sampler);
-            bind_texture_with_sampler(GL_TEXTURE_2D, 5, resolve_deferred_shader, "caustic_texture", causticmap_texture, default_sampler);
-            glUniformMatrix4fv(glGetUniformLocation(resolve_deferred_shader, "depth_to_world"), 1, GL_FALSE, glm::value_ptr(glm::inverse(mCamera.GetWorldToClipMatrix())));
-            glUniformMatrix4fv(glGetUniformLocation(resolve_deferred_shader, "world_to_sun"), 1, GL_FALSE, glm::value_ptr(light_matrix));
+            GLStateInspection::CaptureSnapshot("Final render Pass");
+
+            auto const deffered_set_uniforms_non_water = [&sunColor, &sunDir, &seconds_nb](GLuint program) {
+                // not active
+                glUniform1i(glGetUniformLocation(program, "is_water"), GL_FALSE);
+            };
+
+            auto const deffered_set_uniforms_water = [&sunColor, &sunDir, &seconds_nb](GLuint program) {
+                // activate
+                glUniform1i(glGetUniformLocation(program, "is_water"), GL_TRUE);
+
+                // time uniform
+                glUniform1f(glGetUniformLocation(program, "time"), seconds_nb);
+
+                // Wave 1
+                glUniform1f(glGetUniformLocation(program, "wave1.Amplitude"), constant::waveOne.Amplitude);
+                glUniform1f(glGetUniformLocation(program, "wave1.Frequency"), constant::waveOne.Frequency);
+                glUniform1f(glGetUniformLocation(program, "wave1.Phase"), constant::waveOne.Phase);
+                glUniform1f(glGetUniformLocation(program, "wave1.Sharpness"), constant::waveOne.Sharpness);
+                glUniform2fv(glGetUniformLocation(program, "wave1.Direction"), 1, glm::value_ptr(constant::waveOne.Direction));
+
+                // Wave 2
+                glUniform1f(glGetUniformLocation(program, "wave2.Amplitude"), constant::waveTwo.Amplitude);
+                glUniform1f(glGetUniformLocation(program, "wave2.Frequency"), constant::waveTwo.Frequency);
+                glUniform1f(glGetUniformLocation(program, "wave2.Phase"), constant::waveTwo.Phase);
+                glUniform1f(glGetUniformLocation(program, "wave2.Sharpness"), constant::waveTwo.Sharpness);
+                glUniform2fv(glGetUniformLocation(program, "wave2.Direction"), 1, glm::value_ptr(constant::waveTwo.Direction));
+            };
+
+            for (auto const& element : solids)
+                element.render(mCamera.GetWorldToClipMatrix(), element.get_transform().GetMatrix(), resolve_scene, deffered_set_uniforms_non_water);
+#if 1
+            glCullFace(GL_FRONT);
+            for (auto const& element : transparents)
+                element.render(mCamera.GetWorldToClipMatrix(), element.get_transform().GetMatrix(), resolve_scene, deffered_set_uniforms_water);
+            glCullFace(GL_BACK);
+#endif
+            for (auto const& element : transparents)
+                element.render(mCamera.GetWorldToClipMatrix(), element.get_transform().GetMatrix(), resolve_scene, deffered_set_uniforms_water);
 
 
-            GLStateInspection::CaptureSnapshot("Resolve Pass");
-
-            bonobo::drawFullscreen();
-
-            glBindSampler(3, 0u);
-            glBindSampler(2, 0u);
-            glBindSampler(1, 0u);
-            glBindSampler(0, 0u);
+            
             glUseProgram(0u);
             if (utils::opengl::debug::isSupported())
             {
@@ -702,13 +619,13 @@ project::Project::run()
 
 
         //
-        // Pass 4: Draw wireframe cones on top of the final image for debugging purposes
+        // Pass 5: Draw wireframe cones on top of the final image for debugging purposes
         //
 		
         if (show_cone_wireframe) {
             glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
             box.render(mCamera.GetWorldToClipMatrix(), lightTransform.GetMatrix() * boxScale,
-                render_light_cones_shader, set_uniforms);
+                render_light_cones_shader, no_extra_uniforms);
             glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
         }
 
@@ -718,12 +635,7 @@ project::Project::run()
         //
         if (show_textures) {
             bonobo::displayTexture({ -0.95f, -0.95f }, { -0.55f, -0.55f }, diffuse_texture, default_sampler, { 0, 1, 2, -1 }, glm::uvec2(framebuffer_width, framebuffer_height));
-            bonobo::displayTexture({ -0.45f, -0.95f }, { -0.05f, -0.55f }, specular_texture, default_sampler, { 0, 1, 2, -1 }, glm::uvec2(framebuffer_width, framebuffer_height));
-            bonobo::displayTexture({ 0.05f, -0.95f }, { 0.45f, -0.55f }, normal_texture, default_sampler, { 0, 1, 2, -1 }, glm::uvec2(framebuffer_width, framebuffer_height));
-            bonobo::displayTexture({ 0.55f, -0.95f }, { 0.95f, -0.55f }, depth_texture, default_sampler, { 0, 0, 0, -1 }, glm::uvec2(framebuffer_width, framebuffer_height), true, mCamera.mNear, mCamera.mFar);
             bonobo::displayTexture({ -0.95f,  0.55f }, { -0.55f,  0.95f }, shadowmap_texture, default_sampler, { 0, 0, 0, -1 }, glm::uvec2(framebuffer_width, framebuffer_height), true, lightProjectionNearPlane, lightProjectionFarPlane);
-            bonobo::displayTexture({ -0.45f,  0.55f }, { -0.05f,  0.95f }, light_diffuse_contribution_texture, default_sampler, { 0, 1, 2, -1 }, glm::uvec2(framebuffer_width, framebuffer_height));
-            bonobo::displayTexture({ 0.05f,  0.55f }, { 0.45f,  0.95f }, light_specular_contribution_texture, default_sampler, { 0, 1, 2, -1 }, glm::uvec2(framebuffer_width, framebuffer_height));
             bonobo::displayTexture({ 0.55f, 0.55f }, { 0.95f, 0.95f }, environmentmap_texture, default_sampler, { 0, 1, 2, -1 }, glm::uvec2(framebuffer_width, framebuffer_height), false);
             bonobo::displayTexture({ 0.55f, 0.05f }, { 0.95f, 0.45f }, causticmap_texture, default_sampler, { 0, 1, 2, -1 }, glm::uvec2(framebuffer_width, framebuffer_height), false);
         }
@@ -756,10 +668,8 @@ project::Project::run()
         glfwSwapBuffers(window);
     }
 
-    glDeleteProgram(resolve_deferred_shader);
-    resolve_deferred_shader = 0u;
-    glDeleteProgram(accumulate_lights_shader);
-    accumulate_lights_shader = 0u;
+    glDeleteProgram(resolve_scene);
+    resolve_scene = 0u;
     glDeleteProgram(fill_shadowmap_shader);
     fill_shadowmap_shader = 0u;
     glDeleteProgram(fill_gbuffer_shader);

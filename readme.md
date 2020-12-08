@@ -13,4 +13,9 @@ Vi måste fixa pipeline så det är:
     c) diffuse map för alpha blending mellan vatten,
         reflection, och refraction
 
+        
+ISSUE: on webGL we can see behind the ball in the refraction.
+    This is probably because the rendered image is just rendered
+    from the light PoV and then transformed.
+
 
