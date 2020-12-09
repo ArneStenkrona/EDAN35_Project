@@ -12,11 +12,11 @@ layout (location = 4) in vec3 binormal;
 uniform vec2 inv_res;
 uniform vec3 camera_position;
 
-const float refractionFactor = 1.;
+const float refractionFactor = 0.5;
 
 const float fresnelBias = 0.1;
 const float fresnelPower = 2.;
-const float fresnelScale = 1.;
+const float fresnelScale = 0.1;
 
 const float eta = 0.7504;
 

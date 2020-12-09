@@ -52,8 +52,8 @@ namespace constant
             : Amplitude(A), Frequency(f), Phase(phase), Sharpness(sharpness), Direction(dx, dz), padding(0,0) {};
     };
 
-    Wave waveOne(0.5, 2 * 10, 0.5, 2.0, -1.0, 0.0);
-    Wave waveTwo(0.25, 4 * 10, 1.3, 2.0, -0.7, 0.7);
+    Wave waveOne(0.2, 2 * 10, 0.5, 2.0, -1.0, 0.0);
+    Wave waveTwo(0.1, 4 * 10, 1.3, 2.0, -0.7, 0.7);
 }
 
 static bonobo::mesh_data loadCone();
