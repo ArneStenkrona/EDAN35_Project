@@ -3,22 +3,33 @@
 uniform mat4 vertex_model_to_world;
 uniform mat4 vertex_world_to_clip;
 
-uniform bool is_water;
-
 layout (location = 0) in vec3 vertex;
 layout (location = 1) in vec3 normal;
 layout (location = 2) in vec3 texcoord;
 layout (location = 3) in vec3 tangent;
 layout (location = 4) in vec3 binormal;
 
-out VS_OUT {
-	vec3 normal;
-	vec2 texcoord;
-	vec3 tangent;
-	vec3 binormal;
-    vec4 worldPos;
-} vs_out;
+uniform vec2 inv_res;
+uniform vec3 camera_position;
 
+const float refractionFactor = 1.;
+
+const float fresnelBias = 0.1;
+const float fresnelPower = 2.;
+const float fresnelScale = 1.;
+
+const float eta = 0.7504;
+
+out VS_OUT {
+    vec3 normal;
+    vec2 texcoord;
+    vec3 tangent;
+    vec3 binormal;
+    vec4 worldPos;
+    vec2 refractedPosition[3];
+    vec3 reflected;
+    float reflectionFactor;
+} vs_out;
 
 struct Wave {
     float Amplitude;
@@ -69,30 +80,39 @@ WaveCalculation getVertexWaveData(vec2 xy, Wave[2] waves, float t) {
 }
 
 void main() {
-
-	
     vec4 worldPos;
-    if (is_water) 
-    {
-        Wave[2] waves; waves[0] = wave1; waves[1] = wave2;
-        WaveCalculation vertexData = getVertexWaveData(texcoord.xy, waves, time);
 
-        vs_out.normal = vertexData.normal.xyz;
-        vs_out.tangent = vertexData.tangent.xyz;
-        vs_out.binormal = vertexData.binormal.xyz;
-        worldPos = vertex_model_to_world * vertexData.vertex;
-    } 
-    else 
-    {
-        vs_out.normal   = normalize(normal);
-        vs_out.tangent  = normalize(tangent);
-        vs_out.binormal = normalize(binormal);
-        worldPos = vertex_model_to_world * vec4(vertex, 1.0);
-    }
+    Wave[2] waves; waves[0] = wave1; waves[1] = wave2;
+    WaveCalculation vertexData = getVertexWaveData(texcoord.xy, waves, time);
+
+    vs_out.normal = vertexData.normal.xyz;
+    vs_out.tangent = vertexData.tangent.xyz;
+    vs_out.binormal = vertexData.binormal.xyz;
+    worldPos = vertex_model_to_world * vertexData.vertex;
+
     worldPos = worldPos / worldPos.w;
     // common
     vs_out.texcoord = texcoord.xy;
     vs_out.worldPos = worldPos;
+
+
+    vec3 eye = normalize(worldPos.xyz - camera_position.xyz);
+    vec3 refracted = normalize(refract(eye, vs_out.normal, eta));
+    vs_out.reflected = normalize(reflect(eye, vs_out.normal));
+
+    vs_out.reflectionFactor = fresnelBias + fresnelScale * pow(1. + dot(eye, vs_out.normal), fresnelPower);
+
+    mat4 proj = vertex_world_to_clip;// * vertex_model_to_world;
+
+    vec4 projectedRefractedPosition = proj * vec4(worldPos.xyz + refractionFactor * refracted, 1.0);
+    vs_out.refractedPosition[0] = projectedRefractedPosition.xy / projectedRefractedPosition.w;
+
+    projectedRefractedPosition = proj * vec4(worldPos.xyz + refractionFactor * normalize(refract(eye, vs_out.normal, eta * 0.96)), 1.0);
+    vs_out.refractedPosition[1] = projectedRefractedPosition.xy / projectedRefractedPosition.w;
+
+    projectedRefractedPosition = proj * vec4(worldPos.xyz + refractionFactor * normalize(refract(eye, vs_out.normal, eta * 0.92)), 1.0);
+    vs_out.refractedPosition[2] = projectedRefractedPosition.xy / projectedRefractedPosition.w;
+
     gl_Position = vertex_world_to_clip * worldPos;
-	
+    
 }

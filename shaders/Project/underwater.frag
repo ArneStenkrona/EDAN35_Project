@@ -33,7 +33,6 @@ in VS_OUT {
     vec4 worldPos;
 } fs_in;
 
-out vec4 colour;
 
 float blur(sampler2D image, vec2 uv, vec2 texelsize, vec2 direction) {
   float intensity = 0.;
@@ -47,7 +46,8 @@ float blur(sampler2D image, vec2 uv, vec2 texelsize, vec2 direction) {
   return intensity;
 }
 
-//layout (location = 0) out vec4 underwater_scene;
+layout (location = 0) out vec4 underwater_scene;
+out vec4 colour;
 
 void main()
 {
@@ -143,6 +143,6 @@ void main()
         result += shadowMultiplier * 0.5 * caustic * smoothstep(0., 1., diffuse);
     }
     result += albedo.rgb * ambient;
-    colour = vec4(result, 1.0);
-//    underwater_scene = vec4(result, 1.0);
+//    colour = vec4(result, 1.0);
+    underwater_scene = vec4(result, 1.0);
 }
