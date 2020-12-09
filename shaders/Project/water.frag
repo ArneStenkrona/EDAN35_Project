@@ -4,11 +4,13 @@ uniform bool has_diffuse_texture;
 uniform bool has_specular_texture;
 uniform bool has_normals_texture;
 uniform bool has_opacity_texture;
+uniform bool has_cubemap_texture;
 uniform sampler2D diffuse_texture;
 uniform sampler2D specular_texture;
 uniform sampler2D normals_texture;
 uniform sampler2D opacity_texture;
 uniform sampler2D underwater_texture;
+uniform samplerCube cubemap_texture;
 uniform mat4 normal_model_to_world;
 
 uniform mat4 view_projection_inverse;
@@ -18,11 +20,6 @@ uniform mat4 shadow_view_projection;
 uniform vec3 sun_dir;
 
 uniform vec2 inv_res;
-//uniform sampler2DShadow shadow_texture;
-//uniform vec2 shadowmap_texel_size;
-
-
-//uniform sampler2D causticmap_texture;
 
 in VS_OUT {
     vec3 normal;
@@ -40,7 +37,7 @@ out vec4 colour;
 void main()
 {
 // Color coming from the sky reflection
-  vec3 reflectedColor = vec3(1);//textureCube(skybox, reflected).xyz;
+  vec3 reflectedColor = texture(cubemap_texture, fs_in.reflected).xyz;
 
   // Color coming from the environment refraction, applying chromatic aberration
   vec3 refractedColor = vec3(1.);

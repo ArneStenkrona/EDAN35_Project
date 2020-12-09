@@ -61,7 +61,7 @@ static bonobo::mesh_data loadCone();
 project::Project::Project(WindowManager& windowManager) :
     mCamera(0.5f * glm::half_pi<float>(),
         static_cast<float>(config::resolution_x) / static_cast<float>(config::resolution_y),
-        0.01f * constant::scale_lengths, 60.0f * constant::scale_lengths),
+        0.01f * constant::scale_lengths, 100.0f * constant::scale_lengths),
     inputHandler(), mWindowManager(windowManager), window(nullptr)
 {
     WindowManager::WindowDatum window_datum{ inputHandler, mCamera, config::resolution_x, config::resolution_y, 0, 0, 0, 0 };
@@ -233,10 +233,37 @@ project::Project::run()
         return;
     }
 
+    GLuint render_cubemap = 0u;
+    program_manager.CreateAndRegisterProgram("Cubemap",
+        { { ShaderType::vertex, "Project/cubemap.vert" },
+          { ShaderType::fragment, "Project/cubemap.frag" } },
+        render_cubemap);
+    if (render_cubemap == 0u)
+        LogError("Failed to load cubemap shader");
+
     auto const no_extra_uniforms = [](GLuint /*program*/) {};
 
     int framebuffer_width, framebuffer_height;
     glfwGetFramebufferSize(window, &framebuffer_width, &framebuffer_height);
+
+    // load cubemap mesh
+    auto cube_geometry = parametric_shapes::createCube(50.0f);
+    if (cube_geometry.vao == 0u) {
+        LogError("Failed to create cubemap mesh");
+        return;
+    }
+    // load cubemap textures
+    std::string cubemap_dir = config::resources_path("cubemaps/NissiBeach2");
+    std::string filetype = "jpg"; // make sure this one is correct
+    auto cubemap_texture = bonobo::loadTextureCubeMap(
+        cubemap_dir + "/posx." + filetype, cubemap_dir + "/negx." + filetype,
+        cubemap_dir + "/posy." + filetype, cubemap_dir + "/negy." + filetype,
+        cubemap_dir + "/posz." + filetype, cubemap_dir + "/negz." + filetype,
+        true);
+    // create cube map node
+    auto cube = Node();
+    cube.set_geometry(cube_geometry);
+    cube.add_texture("cubemap_texture", cubemap_texture, GL_TEXTURE_CUBE_MAP);
 
     //
     // Setup textures
@@ -253,6 +280,8 @@ project::Project::run()
 
     for (auto& node : transparents) {
         node.add_texture("underwater_texture", underwater_scene_texture, GL_TEXTURE_2D);
+        node.add_texture("cubemap_texture", cubemap_texture, GL_TEXTURE_CUBE_MAP);
+
     }
 
     //
@@ -376,11 +405,7 @@ project::Project::run()
             auto light_matrix = lightProjection * lightTransform.GetMatrixInverse();
 
             //
-            // Pass 1: Render scene into the g-buffer 
-            //
-
-            //
-            // Pass 2.0: Generate shadow map for sun
+            // Pass 1: Generate shadow map for sun
             //
 
             glCullFace(GL_FRONT);
@@ -406,7 +431,7 @@ project::Project::run()
             
 
             //
-            // Pass 3.0: Generate environment map for sun
+            // Pass 2: Generate environment map for sun
             //
             glCullFace(GL_BACK);
             if (utils::opengl::debug::isSupported())
@@ -435,7 +460,7 @@ project::Project::run()
             }
 
             //
-            // Pass 3.1: Generate caustic map for sun
+            // Pass 3: Generate caustic map for sun
             //
             glCullFace(GL_BACK);
             if (utils::opengl::debug::isSupported())
@@ -495,7 +520,7 @@ project::Project::run()
             }
 
             //
-            // Pass 4: Render final scene
+            // Pass 4: render underwater scene
             //
             glCullFace(GL_BACK);
             glDepthFunc(GL_LESS);
@@ -591,12 +616,34 @@ project::Project::run()
             ////bind_texture_with_sampler(GL_TEXTURE_2D, 5, render_underwater, "shadow_texture", shadowmap_texture, shadow_sampler);
             //for (auto const& element : transparents)
             //    element.render(mCamera.GetWorldToClipMatrix(), element.get_transform().GetMatrix(), render_water, resolve_uniforms_plus_waves);
+            //
+            // Pass 4.1: render cubemap into underwater texture
+            //
+            auto const cubemap_uniforms = [this](GLuint program) {
+                glUniform3fv(glGetUniformLocation(program, "camera_position"), 1,
+                    glm::value_ptr(mCamera.mWorld.GetTranslation()));
+            };
+            glCullFace(GL_FRONT);
+            GLStateInspection::CaptureSnapshot("Cubemap Pass");
+            cube.render(mCamera.GetWorldToClipMatrix(), glm::mat4(1.0f), render_cubemap, cubemap_uniforms);
+            glCullFace(GL_BACK);
 
             glBindFramebuffer(GL_FRAMEBUFFER, 0);
             glViewport(0, 0, framebuffer_width, framebuffer_height);
             glClear(GL_DEPTH_BUFFER_BIT | GL_COLOR_BUFFER_BIT);
 
-            GLStateInspection::CaptureSnapshot("Final render Pass");
+
+            //
+            // Pass 5: render cubemap
+            //
+            glCullFace(GL_FRONT);
+            GLStateInspection::CaptureSnapshot("Cubemap Pass");
+            cube.render(mCamera.GetWorldToClipMatrix(), glm::mat4(1.0f), render_cubemap, cubemap_uniforms);
+            glCullFace(GL_BACK);
+            //
+            // Pass 6: render water
+            //
+            GLStateInspection::CaptureSnapshot("Water Pass");
 
             for (auto const& element : solids)
                 element.render(mCamera.GetWorldToClipMatrix(), element.get_transform().GetMatrix(), render_underwater, resolve_uniforms);
