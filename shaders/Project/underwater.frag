@@ -4,10 +4,12 @@ uniform bool has_diffuse_texture;
 uniform bool has_specular_texture;
 uniform bool has_normals_texture;
 uniform bool has_opacity_texture;
+uniform bool has_causticmap_texture;
 uniform sampler2D diffuse_texture;
 uniform sampler2D specular_texture;
 uniform sampler2D normals_texture;
 uniform sampler2D opacity_texture;
+uniform sampler2D causticmap_texture;
 uniform mat4 normal_model_to_world;
 
 // new
@@ -22,8 +24,6 @@ uniform vec3 sun_dir;
 uniform vec2 inv_res;
 uniform sampler2DShadow shadow_texture;
 uniform vec2 shadowmap_texel_size;
-
-uniform sampler2D causticmap_texture;
 
 in VS_OUT {
     vec3 normal;
@@ -47,20 +47,22 @@ float blur(sampler2D image, vec2 uv, vec2 texelsize, vec2 direction) {
   return intensity;
 }
 
+//layout (location = 0) out vec4 underwater_scene;
+
 void main()
 {
     if (has_opacity_texture && texture(opacity_texture, fs_in.texcoord).r < 1.0)
         discard;
 
     // Diffuse color
-    vec4 geometry_diffuse = vec4(0.0f);
+    vec4 albedo = vec4(0.0f);
     if (has_diffuse_texture)
-        geometry_diffuse = texture(diffuse_texture, fs_in.texcoord);
+        albedo = texture(diffuse_texture, fs_in.texcoord);
 
     // Specular color
-    vec4 geometry_specular = vec4(0.0f);
+    vec4 spec = vec4(0.0f);
     if (has_specular_texture)
-        geometry_specular = texture(specular_texture, fs_in.texcoord);
+        spec = texture(specular_texture, fs_in.texcoord);
 
     // Worldspace normal
     vec3 normal;
@@ -76,7 +78,8 @@ void main()
         normal = fs_in.normal;
     }
 
-    vec3 result = geometry_diffuse.xyz;
+    vec3 ambient = vec3(0.3);
+    vec3 result = vec3(0.0);
 
     vec3 n = normalize(normal);
     vec3 v = normalize(camera_position - fs_in.worldPos.xyz);
@@ -84,7 +87,7 @@ void main()
     vec3 r = normalize(reflect(-l,n));
 
     float diffuse = dot(n,l);
-    result *= diffuse;
+    result += diffuse * albedo.rgb;
 
     if (is_water) 
     {
@@ -131,15 +134,15 @@ void main()
 
         result *= shadowMultiplier;
         
-        //Caustics term but wrongly done atm.
-        //result *= texture(causticmap_texture, uv).xyz;
-
-        vec2 caustic_coord = (shadow_view_projection * fs_in.worldPos).xy * 0.5 + 0.5;
+        // Caustics
+        vec4 lightPos = shadow_view_projection * fs_in.worldPos;
+        vec2 caustic_coord = (lightPos).xy * 0.5 + 0.5;
         vec3 caustic = vec3(blur(causticmap_texture, caustic_coord, shadowmap_texel_size, vec2(0., 0.5)))+
-                       vec3(blur(causticmap_texture, caustic_coord, shadowmap_texel_size, vec2(0.5, 0.)));//texture(causticmap_texture, caustic_coord).rgb;
+                        vec3(blur(causticmap_texture, caustic_coord, shadowmap_texel_size, vec2(0.5, 0.)));//texture(causticmap_texture, caustic_coord).rgb;
 
-        result *= caustic;
+        result += shadowMultiplier * 0.5 * caustic * smoothstep(0., 1., diffuse);
     }
-
+    result += albedo.rgb * ambient;
     colour = vec4(result, 1.0);
+//    underwater_scene = vec4(result, 1.0);
 }
