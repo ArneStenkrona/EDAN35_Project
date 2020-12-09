@@ -85,10 +85,11 @@ void main() {
     else 
     {
         vs_out.normal   = normalize(normal);
-	    vs_out.tangent  = normalize(tangent);
-	    vs_out.binormal = normalize(binormal);
+        vs_out.tangent  = normalize(tangent);
+        vs_out.binormal = normalize(binormal);
         worldPos = vertex_model_to_world * vec4(vertex, 1.0);
     }
+    worldPos = worldPos / worldPos.w;
     // common
     vs_out.texcoord = texcoord.xy;
     vs_out.worldPos = worldPos;

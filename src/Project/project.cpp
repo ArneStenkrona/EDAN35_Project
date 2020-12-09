@@ -29,8 +29,8 @@
 
 namespace constant
 {
-    constexpr uint32_t light_texture_res_x = 2048;
-    constexpr uint32_t light_texture_res_y = 2048;
+    constexpr uint32_t light_texture_res_x = 1024;
+    constexpr uint32_t light_texture_res_y = 1024;
 
     constexpr float  scale_lengths = 1.0f; // The scene is expressed in metres, hence the x1.
 
@@ -613,13 +613,13 @@ project::Project::run()
             for (auto const& element : solids)
                 element.render(mCamera.GetWorldToClipMatrix(), element.get_transform().GetMatrix(), resolve_scene, resolve_uniforms);
 
-            glCullFace(GL_FRONT);
-            for (auto const& element : transparents)
-                element.render(mCamera.GetWorldToClipMatrix(), element.get_transform().GetMatrix(), resolve_scene, resolve_uniforms_plus_waves);
-            glCullFace(GL_BACK);
+            //glCullFace(GL_FRONT);
+            //for (auto const& element : transparents)
+            //    element.render(mCamera.GetWorldToClipMatrix(), element.get_transform().GetMatrix(), resolve_scene, resolve_uniforms_plus_waves);
+            //glCullFace(GL_BACK);
 
-            for (auto const& element : transparents)
-                element.render(mCamera.GetWorldToClipMatrix(), element.get_transform().GetMatrix(), resolve_scene, resolve_uniforms_plus_waves);
+            //for (auto const& element : transparents)
+            //    element.render(mCamera.GetWorldToClipMatrix(), element.get_transform().GetMatrix(), resolve_scene, resolve_uniforms_plus_waves);
 
 
             
