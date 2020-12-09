@@ -165,12 +165,14 @@ bonobo::loadObjects(std::string const& filename)
 		auto const binormals_offset = tangents_offset + tangents_size;
 		auto const binormals_size = assimp_object_mesh->HasTangentsAndBitangents() ? vertices_size : 0u;
 
+
 		auto const bo_size = static_cast<GLsizeiptr>(vertices_size
 		                                            +normals_size
 		                                            +texcoords_size
 		                                            +tangents_size
 		                                            +binormals_size
 		                                            );
+
 		glGenBuffers(1, &object.bo);
 		assert(object.bo != 0u);
 		glBindBuffer(GL_ARRAY_BUFFER, object.bo);

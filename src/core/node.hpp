@@ -43,6 +43,10 @@ public:
 	            GLuint program,
 	            std::function<void (GLuint)> const& set_uniforms = [](GLuint /*programID*/){}) const;
 
+	void render(glm::mat4 const& WVP, glm::mat4 const& world,
+				GLuint program, bool bind_textures,
+				std::function<void(GLuint)> const& set_uniforms = [](GLuint /*programID*/) {}) const;
+
 	//! \brief Set the geometry of this node.
 	//!
 	//! A node without any geometry will not render itself, but its

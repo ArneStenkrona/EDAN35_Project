@@ -73,6 +73,62 @@ Node::render(glm::mat4 const& WVP, glm::mat4 const& world, GLuint program, std::
 }
 
 void
+Node::render(glm::mat4 const& WVP, glm::mat4 const& world, GLuint program, bool bind_textures, std::function<void(GLuint)> const& set_uniforms) const
+{
+	if (_vao == 0u || program == 0u)
+		return;
+
+	if (utils::opengl::debug::isSupported())
+	{
+		glPushDebugGroup(GL_DEBUG_SOURCE_APPLICATION, 0u, _name.size(), _name.data());
+	}
+
+	glUseProgram(program);
+
+	auto const normal_model_to_world = glm::transpose(glm::inverse(world));
+
+	set_uniforms(program);
+
+	glUniformMatrix4fv(glGetUniformLocation(program, "vertex_model_to_world"), 1, GL_FALSE, glm::value_ptr(world));
+	glUniformMatrix4fv(glGetUniformLocation(program, "normal_model_to_world"), 1, GL_FALSE, glm::value_ptr(normal_model_to_world));
+	glUniformMatrix4fv(glGetUniformLocation(program, "vertex_world_to_clip"), 1, GL_FALSE, glm::value_ptr(WVP));
+
+	if (bind_textures) {
+		for (size_t i = 0u; i < _textures.size(); ++i) {
+			auto const& texture = _textures[i];
+			glActiveTexture(GL_TEXTURE0 + static_cast<GLenum>(i));
+			glBindTexture(std::get<2>(texture), std::get<1>(texture));
+			glUniform1i(glGetUniformLocation(program, std::get<0>(texture).c_str()), static_cast<GLint>(i));
+
+			std::string texture_presence_var_name = "has_" + std::get<0>(texture);
+			glUniform1i(glGetUniformLocation(program, texture_presence_var_name.c_str()), 1);
+		}
+	}
+
+	glBindVertexArray(_vao);
+	if (_has_indices)
+		glDrawElements(_drawing_mode, _indices_nb, GL_UNSIGNED_INT, reinterpret_cast<GLvoid const*>(0x0));
+	else
+		glDrawArrays(_drawing_mode, 0, _vertices_nb);
+	glBindVertexArray(0u);
+
+	for (auto const& texture : _textures) {
+		glBindTexture(std::get<2>(texture), 0);
+		glUniform1i(glGetUniformLocation(program, std::get<0>(texture).c_str()), 0);
+
+		std::string texture_presence_var_name = "has_" + std::get<0>(texture);
+		glUniform1i(glGetUniformLocation(program, texture_presence_var_name.c_str()), 0);
+	}
+
+	glUseProgram(0u);
+
+	if (utils::opengl::debug::isSupported())
+	{
+		glPopDebugGroup();
+	}
+}
+
+void
 Node::set_geometry(bonobo::mesh_data const& shape)
 {
 	_vao = shape.vao;

@@ -204,9 +204,9 @@ project::Project::run()
     }
 
     GLuint resolve_scene = 0u;
-    program_manager.CreateAndRegisterProgram("Accumelate Scene",
-        { { ShaderType::vertex, "Project/accumelate_scene.vert" },
-          { ShaderType::fragment, "Project/accumelate_scene.frag" } },
+    program_manager.CreateAndRegisterProgram("Accumulate Scene",
+        { { ShaderType::vertex, "Project/accumulate_scene.vert" },
+          { ShaderType::fragment, "Project/accumulate_scene.frag" } },
         resolve_scene);
     if (resolve_scene == 0u) {
         LogError("Failed to load resolve shader");
@@ -238,10 +238,6 @@ project::Project::run()
 
     for (auto& node : solids) {
         node.add_texture("causticmap_texture", causticmap_texture, GL_TEXTURE_2D);
-    }
-
-    for (auto & node: transparents) {
-        node.add_texture("environmentmap_texture", environmentmap_texture, GL_TEXTURE_2D);
     }
 
     //
@@ -278,6 +274,7 @@ project::Project::run()
         GLfloat border_color[4] = { 1.0f, 0.0f, 0.0f, 0.0f };
         glSamplerParameterfv(sampler, GL_TEXTURE_BORDER_COLOR, border_color);
         });
+
     auto const bind_texture_with_sampler = [](GLenum target, unsigned int slot, GLuint program, std::string const& name, GLuint texture, GLuint sampler) {
         glActiveTexture(GL_TEXTURE0 + slot);
         glBindTexture(target, texture);
@@ -435,9 +432,6 @@ project::Project::run()
             }
             
 
-
-
-
             //
             // Pass 3.0: Generate environment map for sun
             //
@@ -517,8 +511,11 @@ project::Project::run()
                 glUniform2fv(glGetUniformLocation(program, "wave2.Direction"), 1, glm::value_ptr(constant::waveTwo.Direction));
             };
 
-            for (auto const& element : transparents)
-                element.render(light_matrix, element.get_transform().GetMatrix(), fill_causticmap_shader, caustic_set_uniforms);
+            glUseProgram(resolve_scene);
+            bind_texture_with_sampler(GL_TEXTURE_2D, 0, fill_causticmap_shader, "environmentmap_texture", environmentmap_texture, default_sampler);
+
+            for (auto & element : transparents) 
+                element.render(light_matrix, element.get_transform().GetMatrix(), fill_causticmap_shader, false, caustic_set_uniforms);
             if (utils::opengl::debug::isSupported())
             {
                 glPopDebugGroup();

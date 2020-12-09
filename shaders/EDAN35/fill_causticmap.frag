@@ -30,9 +30,9 @@ void main()
         if (newArea == 0.) {
         // Arbitrary large value
             ratio = 2.0e+20;
-        } else {
-            ratio = oldArea / newArea;
-        }
+    } else {
+        ratio = oldArea / newArea;
+    }
         causticsIntensity = causticsFactor * ratio;
     }
 
