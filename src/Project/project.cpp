@@ -32,13 +32,15 @@ namespace constant
     constexpr uint32_t light_texture_res_x = 2048;
     constexpr uint32_t light_texture_res_y = 2048;
 
-    constexpr uint32_t heightmap_res_x = 2048;
-    constexpr uint32_t heightmap_res_y = 2048;
+    constexpr uint32_t heightmap_res_x = 4096;
+    constexpr uint32_t heightmap_res_y = 4096;
 
-    constexpr float  scale_lengths = 1.0f; // The scene is expressed in metres, hence the x1.
+    constexpr float scale_lengths = 1.0f; // The scene is expressed in metres, hence the x1.
+    constexpr uint32_t plane_repeats = 3;
 
     const float shadow_width_half = 10.0f;
     const float shadow_depth_half = 7.0f;
+
 
     constexpr float  light_intensity = 72.0f;
 
@@ -55,8 +57,13 @@ namespace constant
             : Amplitude(A), Frequency(f), Phase(phase), Sharpness(sharpness), Direction(dx, dz), padding(0,0) {};
     };
 
-    Wave waveOne(0.2, 2 * 10, 0.5, 2.0, -1.0, 0.0);
-    Wave waveTwo(0.1, 4 * 10, 1.3, 2.0, -0.7, 0.7);
+    Wave waveOne(0.2, 2 * 10 * constant::plane_repeats * 2, 0.5 * constant::plane_repeats, 2.0, -1.0 , 0.0 );
+    Wave waveTwo(0.1, 4 * 10 * constant::plane_repeats * 2, 1.3 * constant::plane_repeats, 2.0, -0.7 , 0.7 );
+
+    const glm::vec3 underwaterColour = glm::vec3(0.400, 0.900, 1.000);
+    const glm::vec3 atmosphereColour = glm::vec3(0.529, 0.808, 0.922);
+
+    const float MAMSL = 2.0; // Meter above mean sea level. (M.ö.h)
 }
 
 static bonobo::mesh_data loadCone();
@@ -96,6 +103,7 @@ project::Project::run()
 		LogError("Failed to load the water model");
 		return;
 	}
+
 	auto const floor = bonobo::loadObjects(config::resources_path("models/floor/floor.obj"));
 	if (floor.empty()) {
 		LogError("Failed to load the floor model");
@@ -107,29 +115,41 @@ project::Project::run()
 		return;
 	}
 
-	std::vector<std::vector<bonobo::mesh_data>> solid_objects = { floor , ball };
+	std::vector<std::vector<bonobo::mesh_data>> solid_objects = { ball };
     std::vector<std::vector<bonobo::mesh_data>> trans_objects = { water };
 
-	std::vector<glm::vec3> solid_translations = { { 0.0f, -3.0f * constant::scale_lengths, 0.0f }, /* floor */
-											    { 0.0f, -1.0f * constant::scale_lengths, 0.0f } /* beach ball */ };
-    std::vector<glm::vec3> trans_translations = { { 0.0f, 2.0f * constant::scale_lengths, 0.0f }, /* water */ };
+	std::vector<glm::vec3> solid_translations = { { 0.0f, -1.0f * constant::scale_lengths, 0.0f }       /* beach ball */ };
+    std::vector<glm::vec3> solid_scales = {  { 1,1,1 }                                                  /* beach ball */ };
+
+    int limits = static_cast<int>(constant::plane_repeats) / 2;
+    for (int x = -limits; x <= limits; x++) {
+        for (int y = -limits; y <= limits; y++) {
+            solid_objects.push_back(floor);
+            solid_translations.push_back({ 20 * x, -3.0f * constant::scale_lengths, 20 * y });
+            solid_scales.push_back( { 1.0, 1.0, 1.0 });
+        }
+    }
+
+    std::vector<glm::vec3> trans_translations = { { 0.0f, constant::MAMSL * constant::scale_lengths, 0.0f }, /* water */ };
+    std::vector<glm::vec3> trans_scales = { { static_cast<float>(constant::plane_repeats), 1.0, static_cast<float>(constant::plane_repeats) }, /* water */ };
 
     std::vector<Node> solids;
     for (size_t i = 0; i < solid_objects.size(); ++i) {
 		for (size_t j = 0; j < solid_objects[i].size(); ++j) {
 			Node node;
 			node.get_transform().SetTranslate(solid_translations[i]);
-            node.get_transform().Scale(constant::scale_lengths);
+            node.get_transform().Scale(solid_scales[i] * constant::scale_lengths);
 			node.set_geometry(solid_objects[i][j]);
             solids.push_back(node);
 		}
     }
+
     std::vector<Node> transparents;
     for (size_t i = 0; i < trans_objects.size(); ++i) {
         for (size_t j = 0; j < trans_objects[i].size(); ++j) {
             Node node;
             node.get_transform().SetTranslate(trans_translations[i]);
-            node.get_transform().Scale(constant::scale_lengths);
+            node.get_transform().Scale(trans_scales[i] * constant::scale_lengths);
             node.set_geometry(trans_objects[i][j]);
             transparents.push_back(node);
         }
@@ -167,15 +187,6 @@ project::Project::run()
         fill_heightmap_shader);
     if (fill_heightmap_shader == 0u) {
         LogError("Failed to load heightmap filling shader");
-        return;
-    }
-    GLuint fill_diffuse_shader = 0u;
-    program_manager.CreateAndRegisterProgram("Fill Diffuse",
-        { { ShaderType::vertex, "Project/fill_diffuse.vert" },
-          { ShaderType::fragment, "Project/fill_diffuse.frag" } },
-        fill_diffuse_shader);
-    if (fill_diffuse_shader == 0u) {
-        LogError("Failed to load diffuse filling shader");
         return;
     }
 
@@ -247,12 +258,19 @@ project::Project::run()
     //
     // Setup textures
     //
-    auto const shadowmap_texture = bonobo::createTexture(constant::light_texture_res_x, constant::light_texture_res_y, GL_TEXTURE_2D, GL_DEPTH_COMPONENT32F, GL_DEPTH_COMPONENT, GL_FLOAT);
-    auto const environmentmap_texture = bonobo::createTexture(constant::light_texture_res_x, constant::light_texture_res_y, GL_TEXTURE_2D, GL_RGBA32F);
-    auto const causticmap_texture = bonobo::createTexture(constant::light_texture_res_x, constant::light_texture_res_y/*, GL_TEXTURE_2D, GL_R8*/);
-    auto const depth_texture = bonobo::createTexture(framebuffer_width, framebuffer_height, GL_TEXTURE_2D, GL_DEPTH_COMPONENT32F, GL_DEPTH_COMPONENT, GL_FLOAT);
+
     auto const underwater_scene_texture = bonobo::createTexture(framebuffer_width, framebuffer_height);
-    auto const heightmap_texture = bonobo::createTexture(constant::heightmap_res_x, constant::heightmap_res_y, GL_TEXTURE_2D, GL_RGBA32F);
+
+    auto const shadowmap_texture = bonobo::createTexture(constant::light_texture_res_x, constant::light_texture_res_y,
+        GL_TEXTURE_2D, GL_DEPTH_COMPONENT32F, GL_DEPTH_COMPONENT, GL_FLOAT);
+    auto const environmentmap_texture = bonobo::createTexture(constant::light_texture_res_x, constant::light_texture_res_y,
+        GL_TEXTURE_2D, GL_RGBA32F);
+    auto const causticmap_texture = bonobo::createTexture(constant::light_texture_res_x, constant::light_texture_res_y 
+        /*, GL_TEXTURE_2D, GL_R8*/);
+    auto const depth_texture = bonobo::createTexture(framebuffer_width, framebuffer_height,
+        GL_TEXTURE_2D, GL_DEPTH_COMPONENT32F, GL_DEPTH_COMPONENT, GL_FLOAT);
+    auto const heightmap_texture = bonobo::createTexture(constant::heightmap_res_x, constant::heightmap_res_y,
+        GL_TEXTURE_2D, GL_RGBA32F);
 
     //
     // Setup FBOs
@@ -383,6 +401,16 @@ project::Project::run()
 
         mWindowManager.NewImGuiFrame();
 
+        if (mCamera.mWorld.GetTranslation().y >= constant::MAMSL * constant::scale_lengths)
+        {
+            glClearColor(constant::atmosphereColour.x,
+                constant::atmosphereColour.y, constant::atmosphereColour.z, 1.0f);
+        }
+        else
+        {
+            glClearColor(constant::underwaterColour.x,
+                constant::underwaterColour.y, constant::underwaterColour.z, 1.0f);
+        }
 
         if (!shader_reload_failed) {
 
@@ -579,6 +607,10 @@ project::Project::run()
                 glUniform2f(glGetUniformLocation(program, "inv_res"),
                     1.0f / static_cast<float>(framebuffer_width),
                     1.0f / static_cast<float>(framebuffer_height));
+                glUniform3fv(glGetUniformLocation(program, "atmosphereColour"), 1,
+                    glm::value_ptr(constant::atmosphereColour));
+                glUniform3fv(glGetUniformLocation(program, "underwaterColour"), 1,
+                    glm::value_ptr(constant::underwaterColour));
             };
 
             glUseProgram(render_underwater);
@@ -611,12 +643,10 @@ project::Project::run()
             bind_texture_with_sampler(GL_TEXTURE_2D, 5, render_water, "heightmap_texture", heightmap_texture, heightmap_sampler);
             bind_texture_with_sampler(GL_TEXTURE_2D, 6, render_water, "underwater_texture", underwater_scene_texture, default_sampler);
 
-#if 0
             glCullFace(GL_FRONT);
             for (auto const& element : transparents)
-                element.render(mCamera.GetWorldToClipMatrix(), element.get_transform().GetMatrix(), render_underwater, resolve_uniforms);
+                element.render(mCamera.GetWorldToClipMatrix(), element.get_transform().GetMatrix(), render_water, resolve_uniforms);
             glCullFace(GL_BACK);
-#endif
 
             for (auto const& element : transparents)
                 element.render(mCamera.GetWorldToClipMatrix(), element.get_transform().GetMatrix(), render_water, resolve_uniforms);
@@ -682,12 +712,18 @@ project::Project::run()
 
     glDeleteProgram(render_underwater);
     render_underwater = 0u;
+    glDeleteProgram(render_water);
+    render_water = 0u;
+
     glDeleteProgram(fill_heightmap_shader);
     fill_heightmap_shader = 0u;
     glDeleteProgram(fill_shadowmap_shader);
     fill_shadowmap_shader = 0u;
-    glDeleteProgram(fill_diffuse_shader);
-    fill_diffuse_shader = 0u;
+    glDeleteProgram(fill_environmentmap_shader);
+    fill_environmentmap_shader = 0u;
+    glDeleteProgram(fill_causticmap_shader);
+    fill_causticmap_shader = 0u;
+
     glDeleteProgram(fallback_shader);
     fallback_shader = 0u;
 }

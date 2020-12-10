@@ -23,6 +23,9 @@ uniform vec2 inv_res;
 uniform sampler2DShadow shadow_texture;
 uniform vec2 shadowmap_texel_size;
 
+uniform vec3 atmosphereColour;
+uniform vec3 underwaterColour;
+
 in VS_OUT {
     vec3 normal;
     vec2 texcoord;
@@ -121,12 +124,16 @@ void main()
 
     shadowMultiplier /= samples;
     
+    if (samples == 0)
+        shadowMultiplier = 1.0;
+
     // bias against shadow acne
     //if (shadowMultiplier < 0.05)
         //shadowMultiplier = 0;
 
     result *= shadowMultiplier;
-        
+    result = mix(result, underwaterColour, 0.3);
+
     // Caustics
     vec4 lightPos = shadow_view_projection * fs_in.worldPos;
     vec2 caustic_coord = (lightPos).xy * 0.5 + 0.5;
@@ -141,6 +148,8 @@ void main()
     result += shadowMultiplier * 0.5 * caustic * smoothstep(0., 1., diffuse);
 
     result += albedo.rgb * ambient;
+
+    result = vec3(albedo.xyz);
 
     underwater_scene = vec4(result, 1.0);
 }

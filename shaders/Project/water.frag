@@ -15,14 +15,13 @@ in VS_OUT {
 
 out vec4 colour;
 
-const vec4 atmosphere = vec4(0.529, .808, .426, 1.0);
-const vec4 deep_water = vec4(0, 0, 0.1, 1.0);
-const vec4 shallow_water = vec4(0, 0.5, 0.5, 1.0);
+uniform vec3 atmosphereColour;
+uniform vec3 underwaterColour;
 
 void main()
 {
 // Color coming from the sky reflection
-  vec3 reflectedColor = vec3(1);//textureCube(skybox, reflected).xyz;
+  vec3 reflectedColor = atmosphereColour; //vec3(1);//textureCube(skybox, reflected).xyz;
 
   // Color coming from the environment refraction, applying chromatic aberration
   vec3 refractedColor = vec3(1.);
@@ -39,4 +38,5 @@ void main()
   //colour = vec4((normalize(fs_in.normal) + 1.0) * 0.5, 1.0);
   //colour = mix( atmosphere, deep, 1 - max(dot(V,n), 0));
   colour = deep;
+  
 }
