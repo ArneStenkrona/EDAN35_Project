@@ -137,10 +137,17 @@ Licence
 .. _GLM: http://glm.g-truc.net/
 .. _Dear ImGui: https://github.com/ocornut/imgui
 .. _assimp: https://github.com/assimp/assimp
+<<<<<<< HEAD
 .. _stb: https://github.com/nothings/stb
 .. _tinyfiledialogs: https://sourceforge.net/projects/tinyfiledialogs/
 .. _cmake-generators(7): https://cmake.org/cmake/help/latest/manual/cmake-generators.7.html
 .. _Dear ImGui’s licence: src/external/Dear ImGui/LICENSE.txt
 .. _OpenGL 3.3: https://github.com/LUGGPublic/CG_Labs/tree/OpenGL_3.3
 .. _this ZIP file: http://fileadmin.cs.lth.se/cs/Education/EDA221/assignments/EDAF80_resources.zip
+=======
+.. _lodepng: http://lodev.org/lodepng/
+.. _cmake-generators(7): https://cmake.org/cmake/help/latest/manual/cmake-generators.7.html
+.. _Dear ImGui’s licence: Dear_ImGui_LICENCE
+.. _this ZIP file: http://fileadmin.cs.lth.se/cs/Education/EDA221/assignments/EDA221_resources.zip
+>>>>>>> 924a13c... README: Add information about generators in CMake
 .. _the UNLICENCE file: UNLICENCE
