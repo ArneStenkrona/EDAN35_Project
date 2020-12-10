@@ -98,7 +98,7 @@ project::Project::~Project()
 void
 project::Project::run()
 {
-    const std::vector<bonobo::mesh_data> water = { parametric_shapes::createQuad(20, 20, 500, 500) };
+    const std::vector<bonobo::mesh_data> water = { parametric_shapes::createQuad(20, 20, 1000, 1000) };
 	if (water.empty()) {
 		LogError("Failed to load the water model");
 		return;
@@ -412,6 +412,12 @@ project::Project::run()
                 constant::underwaterColour.y, constant::underwaterColour.z, 1.0f);
         }
 
+#if 0
+        glm::vec3 playerPos = mCamera.mWorld.GetTranslation();
+        playerPos.y = 0;
+        lightTransform.SetTranslate(playerPos);
+#endif 
+
         if (!shader_reload_failed) {
 
             /* RENDER DIRECTIONAL LIGHT */
@@ -611,6 +617,8 @@ project::Project::run()
                     glm::value_ptr(constant::atmosphereColour));
                 glUniform3fv(glGetUniformLocation(program, "underwaterColour"), 1,
                     glm::value_ptr(constant::underwaterColour));
+                glUniform1f(glGetUniformLocation(program, "MAMSL"),
+                    constant::MAMSL);
             };
 
             glUseProgram(render_underwater);

@@ -25,8 +25,8 @@ const float eta = 1 / 1.33;
 out VS_OUT {
     vec2 refractedPosition[3];
     float reflectionFactor;
-    vec3 normal;
     vec3 worldPos;
+    float distCamSquared;
 } vs_out;
 
 void main() 
@@ -43,8 +43,8 @@ void main()
     vec4 worldPos = vertex_model_to_world * modelPos;
     worldPos = worldPos / worldPos.w;
 
-    vs_out.normal = waveNormal;
     vs_out.worldPos = worldPos.xyz;
+    vs_out.distCamSquared = dot(worldPos.xyz, worldPos.xyz);
 
     vec3 eye = normalize(worldPos.xyz - camera_position.xyz);
     vec3 reflected = normalize(reflect(eye, normal));

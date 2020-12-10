@@ -8,8 +8,8 @@ uniform vec3 camera_position;
 in VS_OUT {
     vec2 refractedPosition[3];
     float reflectionFactor;
-    vec3 normal;
     vec3 worldPos;
+    float distCamSquared;
 } fs_in;
 
 
@@ -21,7 +21,7 @@ uniform vec3 underwaterColour;
 void main()
 {
 // Color coming from the sky reflection
-  vec3 reflectedColor = atmosphereColour; //vec3(1);//textureCube(skybox, reflected).xyz;
+  vec3 reflectedColor = (fs_in.worldPos.y < camera_position.y) ? underwaterColour : atmosphereColour; //vec3(1);//textureCube(skybox, reflected).xyz;
 
   // Color coming from the environment refraction, applying chromatic aberration
   vec3 refractedColor = vec3(1.);
@@ -32,11 +32,14 @@ void main()
   vec4 deep = vec4(mix(refractedColor, reflectedColor, clamp(fs_in.reflectionFactor, 0., 1.)), 1.);
   //deep = mix(deep, shallow_water, 0.1);
 
-  vec3 n = normalize(fs_in.normal);
-  vec3 V = normalize(fs_in.worldPos - camera_position);
 
   //colour = vec4((normalize(fs_in.normal) + 1.0) * 0.5, 1.0);
   //colour = mix( atmosphere, deep, 1 - max(dot(V,n), 0));
+
+  float fogAlpha = clamp(fs_in.distCamSquared / 750, 0, 1);
+  vec3 fogColour = (fs_in.worldPos.y > camera_position.y) ? underwaterColour : atmosphereColour;
+  deep = vec4(mix(deep.xyz, fogColour, fogAlpha * fogAlpha * fogAlpha), 1.0);
+
   colour = deep;
   
 }

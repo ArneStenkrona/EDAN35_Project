@@ -26,12 +26,15 @@ uniform vec2 shadowmap_texel_size;
 uniform vec3 atmosphereColour;
 uniform vec3 underwaterColour;
 
+uniform float MAMSL;
+
 in VS_OUT {
     vec3 normal;
     vec2 texcoord;
     vec3 tangent;
     vec3 binormal;
     vec4 worldPos;
+    float distCamSquared;
 } fs_in;
 
 
@@ -149,7 +152,9 @@ void main()
 
     result += albedo.rgb * ambient;
 
-    result = vec3(albedo.xyz);
+    float fogAlpha = clamp(fs_in.distCamSquared / 750, 0, 1);
+    vec3 fogColour = (fs_in.worldPos.y < camera_position.y && camera_position.y < MAMSL) ? underwaterColour : atmosphereColour;
+    result = mix(result, fogColour, fogAlpha * fogAlpha * fogAlpha);
 
     underwater_scene = vec4(result, 1.0);
 }
