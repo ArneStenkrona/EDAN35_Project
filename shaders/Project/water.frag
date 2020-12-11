@@ -36,10 +36,6 @@ void main()
   //colour = vec4((normalize(fs_in.normal) + 1.0) * 0.5, 1.0);
   //colour = mix( atmosphere, deep, 1 - max(dot(V,n), 0));
 
-  float fogAlpha = clamp(fs_in.distCamSquared / 750, 0, 1);
-  vec3 fogColour = (fs_in.worldPos.y > camera_position.y) ? underwaterColour : atmosphereColour;
-  deep = vec4(mix(deep.xyz, fogColour, fogAlpha * fogAlpha * fogAlpha), 1.0);
-
   colour = deep;
   
 }

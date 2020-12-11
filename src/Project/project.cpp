@@ -36,7 +36,6 @@ namespace constant
     constexpr uint32_t heightmap_res_y = 4096;
 
     constexpr float scale_lengths = 1.0f; // The scene is expressed in metres, hence the x1.
-    constexpr uint32_t plane_repeats = 3;
 
     const float shadow_width_half = 10.0f;
     const float shadow_depth_half = 7.0f;
@@ -57,8 +56,8 @@ namespace constant
             : Amplitude(A), Frequency(f), Phase(phase), Sharpness(sharpness), Direction(dx, dz), padding(0,0) {};
     };
 
-    Wave waveOne(0.2, 2 * 10 * constant::plane_repeats * 2, 0.5 * constant::plane_repeats, 2.0, -1.0 , 0.0 );
-    Wave waveTwo(0.1, 4 * 10 * constant::plane_repeats * 2, 1.3 * constant::plane_repeats, 2.0, -0.7 , 0.7 );
+    Wave waveOne(0.2, 2 * 10 * 2, 0.5, 2.0, -1.0 , 0.0 );
+    Wave waveTwo(0.1, 4 * 10 *  2, 1.3, 2.0, -0.7 , 0.7 );
 
     const glm::vec3 underwaterColour = glm::vec3(0.400, 0.900, 1.000);
     const glm::vec3 atmosphereColour = glm::vec3(0.529, 0.808, 0.922);
@@ -115,30 +114,18 @@ project::Project::run()
 		return;
 	}
 
-	std::vector<std::vector<bonobo::mesh_data>> solid_objects = { ball };
+	std::vector<std::vector<bonobo::mesh_data>> solid_objects = { floor, ball };
     std::vector<std::vector<bonobo::mesh_data>> trans_objects = { water };
 
-	std::vector<glm::vec3> solid_translations = { { 0.0f, -1.0f * constant::scale_lengths, 0.0f }       /* beach ball */ };
-    std::vector<glm::vec3> solid_scales = {  { 1,1,1 }                                                  /* beach ball */ };
-
-    int limits = static_cast<int>(constant::plane_repeats) / 2;
-    for (int x = -limits; x <= limits; x++) {
-        for (int y = -limits; y <= limits; y++) {
-            solid_objects.push_back(floor);
-            solid_translations.push_back({ 20 * x, -3.0f * constant::scale_lengths, 20 * y });
-            solid_scales.push_back( { 1.0, 1.0, 1.0 });
-        }
-    }
-
-    std::vector<glm::vec3> trans_translations = { { 0.0f, constant::MAMSL * constant::scale_lengths, 0.0f }, /* water */ };
-    std::vector<glm::vec3> trans_scales = { { static_cast<float>(constant::plane_repeats), 1.0, static_cast<float>(constant::plane_repeats) }, /* water */ };
+	std::vector<glm::vec3> solid_translations = { { 0, -3.0f * constant::scale_lengths, 0}, { 0.0f, -1.0f * constant::scale_lengths, 0.0f } };
+    std::vector<glm::vec3> trans_translations = { { 0.0f, constant::MAMSL * constant::scale_lengths, 0.0f },};
 
     std::vector<Node> solids;
     for (size_t i = 0; i < solid_objects.size(); ++i) {
 		for (size_t j = 0; j < solid_objects[i].size(); ++j) {
 			Node node;
 			node.get_transform().SetTranslate(solid_translations[i]);
-            node.get_transform().Scale(solid_scales[i] * constant::scale_lengths);
+            node.get_transform().Scale(constant::scale_lengths);
 			node.set_geometry(solid_objects[i][j]);
             solids.push_back(node);
 		}
@@ -149,7 +136,7 @@ project::Project::run()
         for (size_t j = 0; j < trans_objects[i].size(); ++j) {
             Node node;
             node.get_transform().SetTranslate(trans_translations[i]);
-            node.get_transform().Scale(trans_scales[i] * constant::scale_lengths);
+            node.get_transform().Scale(constant::scale_lengths);
             node.set_geometry(trans_objects[i][j]);
             transparents.push_back(node);
         }

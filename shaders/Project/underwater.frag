@@ -135,7 +135,7 @@ void main()
         //shadowMultiplier = 0;
 
     result *= shadowMultiplier;
-    result = mix(result, underwaterColour, 0.3);
+    result = mix(result, underwaterColour, 0.5);
 
     // Caustics
     vec4 lightPos = shadow_view_projection * fs_in.worldPos;
@@ -151,10 +151,6 @@ void main()
     result += shadowMultiplier * 0.5 * caustic * smoothstep(0., 1., diffuse);
 
     result += albedo.rgb * ambient;
-
-    float fogAlpha = clamp(fs_in.distCamSquared / 750, 0, 1);
-    vec3 fogColour = (fs_in.worldPos.y < camera_position.y && camera_position.y < MAMSL) ? underwaterColour : atmosphereColour;
-    result = mix(result, fogColour, fogAlpha * fogAlpha * fogAlpha);
 
     underwater_scene = vec4(result, 1.0);
 }
