@@ -607,15 +607,6 @@ project::Project::run()
             for (auto const& element : solids)
                 element.render(mCamera.GetWorldToClipMatrix(), element.get_transform().GetMatrix(), render_underwater, resolve_uniforms);
 
-            //glCullFace(GL_FRONT);
-            //for (auto const& element : transparents)
-            //    element.render(mCamera.GetWorldToClipMatrix(), element.get_transform().GetMatrix(), resolve_scene, resolve_uniforms_plus_waves);
-            //glCullFace(GL_BACK);
-
-            //glUseProgram(render_water);
-            ////bind_texture_with_sampler(GL_TEXTURE_2D, 5, render_underwater, "shadow_texture", shadowmap_texture, shadow_sampler);
-            //for (auto const& element : transparents)
-            //    element.render(mCamera.GetWorldToClipMatrix(), element.get_transform().GetMatrix(), render_water, resolve_uniforms_plus_waves);
             //
             // Pass 4.1: render cubemap into underwater texture
             //
@@ -650,11 +641,9 @@ project::Project::run()
 
             //glCullFace(GL_FRONT);
             //for (auto const& element : transparents)
-            //    element.render(mCamera.GetWorldToClipMatrix(), element.get_transform().GetMatrix(), resolve_scene, resolve_uniforms_plus_waves);
+            //    element.render(mCamera.GetWorldToClipMatrix(), element.get_transform().GetMatrix(), render_water, resolve_uniforms_plus_waves);
             //glCullFace(GL_BACK);
 
-            //glUseProgram(render_water);
-            //bind_texture_with_sampler(GL_TEXTURE_2D, 5, render_underwater, "shadow_texture", shadowmap_texture, shadow_sampler);
             for (auto const& element : transparents)
                 element.render(mCamera.GetWorldToClipMatrix(), element.get_transform().GetMatrix(), render_water, resolve_uniforms_plus_waves);
 
