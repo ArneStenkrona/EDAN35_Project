@@ -98,11 +98,21 @@ project::Project::~Project()
 void
 project::Project::run()
 {
-    const std::vector<bonobo::mesh_data> water = { parametric_shapes::createQuad(20, 20, 1000, 1000) };
+    const float wall_width = 20;
+    const unsigned int wall_res_width = 1000;
+
+    const std::vector<bonobo::mesh_data> water = { parametric_shapes::createQuad(wall_width, wall_width, wall_res_width, wall_res_width) };
 	if (water.empty()) {
 		LogError("Failed to load the water model");
 		return;
 	}
+
+    //I had issues when resolution wasn't square
+    const std::vector<bonobo::mesh_data> water_wall = { parametric_shapes::createQuad(wall_width, 2, wall_res_width, 3) };
+    if (water_wall.empty()) {
+        LogError("Failed to load the water wall");
+        return;
+    }
 
 	auto const floor = bonobo::loadObjects(config::resources_path("models/floor/floor.obj"));
 	if (floor.empty()) {
@@ -120,6 +130,12 @@ project::Project::run()
 
 	std::vector<glm::vec3> solid_translations = { { 0, -3.0f * constant::scale_lengths, 0}, { 0.0f, 2.0f/*-1.0f*/ * constant::scale_lengths, 0.0f } };
     std::vector<glm::vec3> trans_translations = { { 0.0f, constant::MAMSL * constant::scale_lengths, 0.0f },};
+    // -0.5 is the midpoint between [2, -3]
+    std::vector<glm::highp_vec3> CSO_translations = { { 10.0f, -0.5, 0.0f },
+                                                { 0.0f, -0.5, 10.0f },
+                                                { -10.0f, -0.5, 0.0f },
+                                                { 0.0f, -0.5, -10.0f },
+    };
 
     std::vector<Node> solids;
     for (size_t i = 0; i < solid_objects.size(); ++i) {
@@ -140,6 +156,21 @@ project::Project::run()
             node.get_transform().Scale(constant::scale_lengths);
             node.set_geometry(trans_objects[i][j]);
             transparents.push_back(node);
+        }
+    }
+
+    std::vector<Node> transparents_walls;
+    for (size_t i = 0; i < 4; ++i) {
+        for (size_t j = 0; j < water_wall.size(); ++j) {
+            Node node = {};
+            node.get_transform().SetTranslate(CSO_translations[i]);
+            node.get_transform().SetScale(glm::vec3(1, 1, 2.5));
+            node.get_transform().Scale(constant::scale_lengths);
+            node.get_transform().SetRotate(3.14159265359 / 2.0f, glm::vec3(1,0,0));
+            node.get_transform().Rotate(3.14159265359 / 2.0f, glm::vec3(0, 0, -1));
+            node.get_transform().Rotate(3.14159265359 / 2.0f * i, glm::vec3(0, 0, 1));
+            node.set_geometry(water_wall[j]);
+            transparents_walls.push_back(node);
         }
     }
 
@@ -185,6 +216,16 @@ project::Project::run()
         simulate_water_shader);
     if (simulate_water_shader == 0u) {
         LogError("Failed to load water simulation shader");
+        return;
+    }
+
+    GLuint water_wall_shader = 0u;
+    program_manager.CreateAndRegisterProgram("Simulate water wall",
+        { { ShaderType::vertex, "Project/underwater_wall.vert" },
+          { ShaderType::fragment, "Project/underwater_wall.frag" } },
+        water_wall_shader);
+    if (water_wall_shader == 0u) {
+        LogError("Failed to load water wall shader");
         return;
     }
 
@@ -320,6 +361,10 @@ project::Project::run()
 
     for (auto& node : transparents) {
         node.add_texture("underwater_texture", underwater_scene_texture, GL_TEXTURE_2D);
+        node.add_texture("cubemap_texture", cubemap_texture, GL_TEXTURE_CUBE_MAP);
+    }
+
+    for (auto& node : transparents_walls) {
         node.add_texture("cubemap_texture", cubemap_texture, GL_TEXTURE_CUBE_MAP);
     }
 
@@ -580,7 +625,7 @@ project::Project::run()
             glm::vec4 mouse_pos = glm::vec4{xpos, ypos, 0.0f, 1.0f};
             glm::vec4 water_click_pos = mouse_pos;
 
-            std::cout << glm::to_string(water_click_pos) << std::endl;
+            //std::cout << glm::to_string(water_click_pos) << std::endl;
            
             auto const water_drop_uniform = [this, &water_drop_counter, &mouse_down, &water_click_pos](GLuint program) {
                 glUniform2fv(glGetUniformLocation(program, "center"), 1, glm::value_ptr(glm::vec2(water_click_pos.x, water_click_pos.y)));
@@ -870,6 +915,15 @@ project::Project::run()
 
             for (auto const& element : transparents)
                 element.render(mCamera.GetWorldToClipMatrix(), element.get_transform().GetMatrix(), render_water, resolve_uniforms);
+
+            glUseProgram(water_wall_shader);
+            bind_texture_with_sampler(GL_TEXTURE_2D, 5, water_wall_shader, "heightmap_texture", sim_tex, heightmap_sampler);
+            bind_texture_with_sampler(GL_TEXTURE_2D, 6, water_wall_shader, "underwater_texture", underwater_scene_texture, default_sampler);
+            glCullFace(GL_FRONT);
+            for (auto const& element : transparents_walls)
+                element.render(mCamera.GetWorldToClipMatrix(), element.get_transform().GetMatrix(), water_wall_shader, resolve_uniforms);
+            glCullFace(GL_BACK);
+
 
             if (utils::opengl::debug::isSupported())
             {
