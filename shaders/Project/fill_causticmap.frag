@@ -36,5 +36,5 @@ void main()
         causticsIntensity = causticsFactor * ratio;
     }
 
-    caustic_map = vec4(vec3(causticsIntensity), fs_in.depth);
+    caustic_map = vec4(fs_in.normal, 1.0);//vec4(vec3(causticsIntensity), fs_in.depth);
 }

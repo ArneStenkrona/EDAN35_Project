@@ -10,7 +10,7 @@ Ke 0.000000 0.000000 0.000000
 Ni 1.450000
 d 1.000000
 illum 2
-map_Bump rock_normal.png
+map_Kn rock_normal.png
 map_Kd rock_albedo.png
 map_Ns rock_roughness.png
 
@@ -23,7 +23,7 @@ Ke 0.000000 0.000000 0.000000
 Ni 1.450000
 d 1.000000
 illum 2
-map_Bump sand_normal.png
+map_Kn sand_normal.png
 map_Kd sand_albedo.png
 map_Ns sand_roughness.png
 
@@ -36,6 +36,6 @@ Ke 0.000000 0.000000 0.000000
 Ni 1.450000
 d 1.000000
 illum 2
-map_Bump sand_normal.png
+map_Kn sand_normal.png
 map_Kd sand_albedo.png
 map_Ns sand_roughness.png

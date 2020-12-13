@@ -2,6 +2,7 @@
 
 //uniform bool has_environmentmap_texture;
 uniform sampler2D environmentmap_texture;
+uniform sampler2D heightmap_texture;
 uniform mat4 normal_model_to_world;
 
 uniform mat4 vertex_model_to_world;
@@ -31,64 +32,20 @@ uniform vec2 environmentmap_texel_size;
 const float eta = 0.7504;
 const int max_iter = 50;
 
-struct Wave {
-    float Amplitude;
-    float Frequency;
-    float Phase;
-    float Sharpness;
-    vec2 Direction;
-
-    vec2 padding;
-};
-
-uniform Wave wave1;
-uniform Wave wave2;
-uniform float time;
-
-struct WaveCalculation {
-    vec4 vertex;
-    vec4 normal;
-    vec4 tangent;
-    vec4 binormal;
-};
-
-WaveCalculation getVertexWaveData(vec2 uv, Wave[2] waves, float t) {
-
-    float height = 0;
-    float dHdx = 0;
-    float dHdz = 0;
-    Wave w;
-    for(int i = 0; i < 2; i++) {
-        w = waves[i];
-        float dirFact = w.Direction.x * uv.x + w.Direction.y * uv.y;
-        float sinFact = sin(dirFact * w.Frequency + t * w.Phase) * 0.5 + 0.5;
-        float cosFact = 0.5 * w.Sharpness * w.Frequency * w.Amplitude * cos(dirFact * w.Frequency + t * w.Phase);
-        height += w.Amplitude * pow(sinFact, w.Sharpness);
-        float cosSinFact = pow(sinFact, w.Sharpness - 1) * cosFact;
-        dHdx += cosSinFact * w.Direction.x;
-        dHdz += cosSinFact * w.Direction.y;
-    }
-
-    // Fill output in struct
-    WaveCalculation result;
-    result.vertex = vec4(vertex + vec3(0, height, 0), 1.0);
-    // Convert from tangent space to model space
-    result.normal = vec4(vec3(-dHdx, 1, -dHdz), 0.0);
-    result.tangent = vec4(vec3(1, dHdx, 0), 0.0);
-    result.binormal = vec4(vec3(0, dHdz, 1), 0.0);
-    return result;
-}
-
 void main()
 {
-    Wave[2] waves; waves[0] = wave1; waves[1] = wave2;
-    WaveCalculation vertexData = getVertexWaveData(texcoord.xy, waves, time);
+    vec4 modelPos;
+    vec3 waveNormal;
 
-    vs_out.normal = vec3(normalize(normal_model_to_world * vertexData.normal));
-//    vs_out.tangent  = normalize(tangent);
-//    vs_out.binormal = normalize(binormal);
+    vec4 info = texture(heightmap_texture, texcoord.xy);
+
+    modelPos = vec4(vertex + vec3(0,1,0) * info.r/*info.w*/, 1.0);
+    waveNormal = normalize(vec3(info.b, sqrt(1.0 - dot(info.ba, info.ba)), info.a)).xyz;//normalize(normal_and_height.xyz);
+
     
-    vec4 worldPos = vertex_model_to_world * vertexData.vertex;
+    vs_out.normal = vec3(normalize(normal_model_to_world * vec4(waveNormal, 0)));
+    
+    vec4 worldPos = vertex_model_to_world * modelPos;
 
     vs_out.oldPos = worldPos.xyz;
 

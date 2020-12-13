@@ -18,6 +18,7 @@
 
 #include <imgui.h>
 #include <glm/glm.hpp>
+#include <glm/gtx/string_cast.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
 #include <tinyfiledialogs.h>
@@ -29,13 +30,17 @@
 
 namespace constant
 {
-    constexpr uint32_t light_texture_res_x = 1024;
-    constexpr uint32_t light_texture_res_y = 1024;
+    constexpr uint32_t light_texture_res_x = 2048;
+    constexpr uint32_t light_texture_res_y = 2048;
 
-    constexpr float  scale_lengths = 1.0f; // The scene is expressed in metres, hence the x1.
+    constexpr uint32_t heightmap_res_x = 512;//4096;
+    constexpr uint32_t heightmap_res_y = 512;//4096;
+
+    constexpr float scale_lengths = 1.0f; // The scene is expressed in metres, hence the x1.
 
     const float shadow_width_half = 10.0f;
     const float shadow_depth_half = 7.0f;
+
 
     constexpr float  light_intensity = 72.0f;
 
@@ -52,8 +57,13 @@ namespace constant
             : Amplitude(A), Frequency(f), Phase(phase), Sharpness(sharpness), Direction(dx, dz), padding(0,0) {};
     };
 
-    Wave waveOne(0.2, 2 * 10, 0.5, 2.0, -1.0, 0.0);
-    Wave waveTwo(0.1, 4 * 10, 1.3, 2.0, -0.7, 0.7);
+    Wave waveOne(0.2, 2 * 10 * 2, 0.5, 2.0, -1.0 , 0.0 );
+    Wave waveTwo(0.1, 4 * 10 *  2, 1.3, 2.0, -0.7 , 0.7 );
+
+    const glm::vec3 underwaterColour = glm::vec3(0.400, 0.900, 1.000);
+    const glm::vec3 atmosphereColour = glm::vec3(0.529, 0.808, 0.922);
+
+    const float MAMSL = 2.0; // Meter above mean sea level. (M.ö.h)
 }
 
 static bonobo::mesh_data loadCone();
@@ -88,11 +98,12 @@ project::Project::~Project()
 void
 project::Project::run()
 {
-	auto const water = bonobo::loadObjects(config::resources_path("models/water/water.obj"));
+    const std::vector<bonobo::mesh_data> water = { parametric_shapes::createQuad(20, 20, 1000, 1000) };
 	if (water.empty()) {
 		LogError("Failed to load the water model");
 		return;
 	}
+
 	auto const floor = bonobo::loadObjects(config::resources_path("models/floor/floor.obj"));
 	if (floor.empty()) {
 		LogError("Failed to load the floor model");
@@ -104,18 +115,11 @@ project::Project::run()
 		return;
 	}
 
-	std::vector<std::vector<bonobo::mesh_data>> solid_objects = { floor , ball };
+	std::vector<std::vector<bonobo::mesh_data>> solid_objects = { floor, ball };
     std::vector<std::vector<bonobo::mesh_data>> trans_objects = { water };
 
-#if 0
-	std::vector<bonobo::mesh_data> meshes = { parametric_shapes::createQuad(10 * constant::scale_lengths, 10 * constant::scale_lengths, 1, 1), /* floor */
-											  parametric_shapes::createQuad(10 * constant::scale_lengths, 10 * constant::scale_lengths, 1, 1), /* water */
-											  parametric_shapes::createSphere(16,32, 0.5 * constant::scale_lengths) /* beach ball */ };
-#endif
-
-	std::vector<glm::vec3> solid_translations = { { 0.0f, -3.0f * constant::scale_lengths, 0.0f }, /* floor */
-											    { 0.0f, -1.0f * constant::scale_lengths, 0.0f } /* beach ball */ };
-    std::vector<glm::vec3> trans_translations = { { 0.0f, 2.0f * constant::scale_lengths, 0.0f }, /* water */ };
+	std::vector<glm::vec3> solid_translations = { { 0, -3.0f * constant::scale_lengths, 0}, { 0.0f, 2.0f/*-1.0f*/ * constant::scale_lengths, 0.0f } };
+    std::vector<glm::vec3> trans_translations = { { 0.0f, constant::MAMSL * constant::scale_lengths, 0.0f },};
 
     std::vector<Node> solids;
     for (size_t i = 0; i < solid_objects.size(); ++i) {
@@ -127,6 +131,7 @@ project::Project::run()
             solids.push_back(node);
 		}
     }
+
     std::vector<Node> transparents;
     for (size_t i = 0; i < trans_objects.size(); ++i) {
         for (size_t j = 0; j < trans_objects[i].size(); ++j) {
@@ -163,13 +168,33 @@ project::Project::run()
         return;
     }
 
-    GLuint fill_diffuse_shader = 0u;
-    program_manager.CreateAndRegisterProgram("Fill Diffuse",
-        { { ShaderType::vertex, "Project/fill_diffuse.vert" },
-          { ShaderType::fragment, "Project/fill_diffuse.frag" } },
-        fill_diffuse_shader);
-    if (fill_diffuse_shader == 0u) {
-        LogError("Failed to load diffuse filling shader");
+    GLuint fill_heightmap_shader = 0u; 
+    program_manager.CreateAndRegisterProgram("Fill Heightmap",
+        { { ShaderType::vertex, "Project/fill_heightmap.vert" },
+          { ShaderType::fragment, "Project/fill_heightmap.frag" } },
+        fill_heightmap_shader);
+    if (fill_heightmap_shader == 0u) {
+        LogError("Failed to load heightmap filling shader");
+        return;
+    }
+
+    GLuint simulate_water_shader = 0u;
+    program_manager.CreateAndRegisterProgram("Simulate water",
+        { { ShaderType::vertex, "Project/sim_water.vert" },
+          { ShaderType::fragment, "Project/sim_water.frag" } },
+        simulate_water_shader);
+    if (simulate_water_shader == 0u) {
+        LogError("Failed to load water simulation shader");
+        return;
+    }
+
+    GLuint water_drop_shader = 0u;
+    program_manager.CreateAndRegisterProgram("Water drop",
+        { { ShaderType::vertex, "Project/sim_water.vert" },
+          { ShaderType::fragment, "Project/water_drop.frag" } },
+        water_drop_shader);
+    if (water_drop_shader == 0u) {
+        LogError("Failed to load water simulation shader");
         return;
     }
 
@@ -182,6 +207,17 @@ project::Project::run()
         LogError("Failed to load shadowmap filling shader");
         return;
     }
+
+    GLuint fill_water_depthmap_shader = 0u;
+    program_manager.CreateAndRegisterProgram("Fill water depth map",
+        { { ShaderType::vertex, "Project/fill_water_depthmap.vert" },
+          { ShaderType::fragment, "EDAN35/fill_shadowmap.frag" } },
+        fill_water_depthmap_shader);
+    if (fill_water_depthmap_shader == 0u) {
+        LogError("Failed to load water depthmap filling shader");
+        return;
+    }
+
 
     GLuint fill_environmentmap_shader = 0u;
     program_manager.CreateAndRegisterProgram("Fill environment map",
@@ -212,6 +248,17 @@ project::Project::run()
         LogError("Failed to load resolve shader");
         return;
     }
+
+    GLuint render_overwater = 0u;
+    program_manager.CreateAndRegisterProgram("Overwater",
+        { { ShaderType::vertex, "Project/overwater.vert" },
+          { ShaderType::fragment, "Project/overwater.frag" } },
+        render_overwater);
+    if (render_overwater == 0u) {
+        LogError("Failed to load resolve shader");
+        return;
+    }
+
 
     GLuint render_water = 0u;
     program_manager.CreateAndRegisterProgram("Water",
@@ -268,29 +315,41 @@ project::Project::run()
     //
     // Setup textures
     //
-    auto const shadowmap_texture = bonobo::createTexture(constant::light_texture_res_x, constant::light_texture_res_y, GL_TEXTURE_2D, GL_DEPTH_COMPONENT32F, GL_DEPTH_COMPONENT, GL_FLOAT);
-    auto const environmentmap_texture = bonobo::createTexture(constant::light_texture_res_x, constant::light_texture_res_y, GL_TEXTURE_2D, GL_RGBA32F);
-    auto const causticmap_texture = bonobo::createTexture(constant::light_texture_res_x, constant::light_texture_res_y/*, GL_TEXTURE_2D, GL_R8*/);
-    auto const depth_texture = bonobo::createTexture(framebuffer_width, framebuffer_height, GL_TEXTURE_2D, GL_DEPTH_COMPONENT32F, GL_DEPTH_COMPONENT, GL_FLOAT);
-    auto const underwater_scene_texture = bonobo::createTexture(framebuffer_width, framebuffer_height);
 
-    for (auto& node : solids) {
-        node.add_texture("causticmap_texture", causticmap_texture, GL_TEXTURE_2D);
-    }
+    auto const underwater_scene_texture = bonobo::createTexture(framebuffer_width, framebuffer_height);
 
     for (auto& node : transparents) {
         node.add_texture("underwater_texture", underwater_scene_texture, GL_TEXTURE_2D);
         node.add_texture("cubemap_texture", cubemap_texture, GL_TEXTURE_CUBE_MAP);
-
     }
+
+    auto const shadowmap_texture = bonobo::createTexture(constant::light_texture_res_x, constant::light_texture_res_y,
+        GL_TEXTURE_2D, GL_DEPTH_COMPONENT32F, GL_DEPTH_COMPONENT, GL_FLOAT);
+    auto const environmentmap_texture = bonobo::createTexture(constant::light_texture_res_x, constant::light_texture_res_y,
+        GL_TEXTURE_2D, GL_RGBA32F);
+    auto const causticmap_texture = bonobo::createTexture(constant::light_texture_res_x, constant::light_texture_res_y);
+    auto const depth_texture = bonobo::createTexture(framebuffer_width, framebuffer_height,
+        GL_TEXTURE_2D, GL_DEPTH_COMPONENT32F, GL_DEPTH_COMPONENT, GL_FLOAT);
+    auto const water_depth_texture = bonobo::createTexture(constant::light_texture_res_x, constant::light_texture_res_y,
+        GL_TEXTURE_2D, GL_DEPTH_COMPONENT32F, GL_DEPTH_COMPONENT, GL_FLOAT);
+    auto const heightmap_texture = bonobo::createTexture(constant::heightmap_res_x, constant::heightmap_res_y,
+        GL_TEXTURE_2D, GL_RGBA32F);
+    auto const water_texture0 = bonobo::createTexture(constant::heightmap_res_x, constant::heightmap_res_y,
+        GL_TEXTURE_2D, GL_RGBA32F);
+    auto const water_texture1 = bonobo::createTexture(constant::heightmap_res_x, constant::heightmap_res_y,
+        GL_TEXTURE_2D, GL_RGBA32F);
 
     //
     // Setup FBOs
     //
+    auto const heightmap_fbo = bonobo::createFBO({ heightmap_texture });
     auto const shadowmap_fbo = bonobo::createFBO({}, shadowmap_texture);
+    auto const water_depth_fbo = bonobo::createFBO({}, water_depth_texture);
     auto const environmentmap_fbo = bonobo::createFBO({ environmentmap_texture });
     auto const causticmap_fbo = bonobo::createFBO({ causticmap_texture });
     auto const underwater_scene_fbo = bonobo::createFBO({ underwater_scene_texture }, depth_texture);
+    auto const water_fbo0 = bonobo::createFBO({ water_texture0 });
+    auto const water_fbo1 = bonobo::createFBO({ water_texture1 });
     //
     // Setup samplers
     //
@@ -300,6 +359,13 @@ project::Project::run()
         glSamplerParameteri(sampler, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
         glSamplerParameteri(sampler, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
         });
+    auto const foam_sampler = bonobo::createSampler([](GLuint sampler) {
+        glSamplerParameteri(sampler, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glSamplerParameteri(sampler, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glSamplerParameteri(sampler, GL_TEXTURE_WRAP_S, GL_REPEAT);
+        glSamplerParameteri(sampler, GL_TEXTURE_WRAP_T, GL_REPEAT);
+        });
+
 
     auto const depth_sampler = bonobo::createSampler([](GLuint sampler) {
         glSamplerParameteri(sampler, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
@@ -318,6 +384,20 @@ project::Project::run()
         GLfloat border_color[4] = { 1.0f, 0.0f, 0.0f, 0.0f };
         glSamplerParameterfv(sampler, GL_TEXTURE_BORDER_COLOR, border_color);
         });
+
+    auto const heightmap_sampler = bonobo::createSampler([](GLuint sampler) {
+        glSamplerParameteri(sampler, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        glSamplerParameteri(sampler, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+        glSamplerParameteri(sampler, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glSamplerParameteri(sampler, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    });
+
+    auto const caustics_sampler = bonobo::createSampler([](GLuint sampler) {
+        glSamplerParameteri(sampler, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glSamplerParameteri(sampler, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glSamplerParameteri(sampler, GL_TEXTURE_WRAP_S, GL_REPEAT);
+        glSamplerParameteri(sampler, GL_TEXTURE_WRAP_T, GL_REPEAT);
+    });
 
     auto const bind_texture_with_sampler = [](GLenum target, unsigned int slot, GLuint program, std::string const& name, GLuint texture, GLuint sampler) {
         glActiveTexture(GL_TEXTURE0 + slot);
@@ -342,6 +422,8 @@ project::Project::run()
     float const lightProjectionNearPlane = -constant::shadow_depth_half * constant::scale_lengths;
     float const lightProjectionFarPlane = constant::shadow_depth_half * constant::scale_lengths;
 
+    int water_tex_counter = 0;
+    long water_drop_counter = 0;
 
 	TRSTransformf lightTransform;
     lightTransform.SetTranslate(-sunDir);
@@ -369,6 +451,10 @@ project::Project::run()
     bool show_gui = true;
     bool shader_reload_failed = false;
 
+    float deltaTimeSec;
+    double xpos, ypos;
+    bool mouse_down;
+
     while (!glfwWindowShouldClose(window)) {
         auto const nowTime = std::chrono::high_resolution_clock::now();
         auto const deltaTimeUs = std::chrono::duration_cast<std::chrono::microseconds>(nowTime - lastTime);
@@ -376,12 +462,25 @@ project::Project::run()
         if (!are_lights_paused)
             seconds_nb += std::chrono::duration<decltype(seconds_nb)>(deltaTimeUs).count();
 
+        deltaTimeSec = std::chrono::duration<decltype(seconds_nb)>(deltaTimeUs).count();
+
         auto& io = ImGui::GetIO();
         inputHandler.SetUICapture(io.WantCaptureMouse, io.WantCaptureKeyboard);
 
         glfwPollEvents();
         inputHandler.Advance();
         mCamera.Update(deltaTimeUs, inputHandler);
+
+        //getting cursor position
+        glfwGetCursorPos(window, &xpos, &ypos);
+        int width, height;
+        glfwGetWindowSize(window, &width, &height);
+
+        xpos /= width;
+        ypos /= height;
+        xpos = 2.0*xpos-1.0;
+        ypos = 2.0*ypos-1.0;
+        mouse_down = glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS;
 
         if (inputHandler.GetKeycodeState(GLFW_KEY_R) & JUST_PRESSED) {
             shader_reload_failed = !program_manager.ReloadAllPrograms();
@@ -398,14 +497,131 @@ project::Project::run()
 
         mWindowManager.NewImGuiFrame();
 
+        if (mCamera.mWorld.GetTranslation().y >= constant::MAMSL * constant::scale_lengths)
+        {
+            glClearColor(constant::atmosphereColour.x,
+                constant::atmosphereColour.y, constant::atmosphereColour.z, 1.0f);
+        }
+        else
+        {
+            glClearColor(constant::underwaterColour.x,
+                constant::underwaterColour.y, constant::underwaterColour.z, 1.0f);
+        }
+
+#if 0
+        glm::vec3 playerPos = mCamera.mWorld.GetTranslation();
+        playerPos.y = 0;
+        lightTransform.SetTranslate(playerPos);
+#endif 
 
         if (!shader_reload_failed) {
 
             /* RENDER DIRECTIONAL LIGHT */
             auto light_matrix = lightProjection * lightTransform.GetMatrixInverse();
+            //
+            // Pass 1: Render heightmap 
+            //
+            glCullFace(GL_BACK);
+            if (utils::opengl::debug::isSupported())
+            {
+                std::string const group_name = "Heightmap Generation";
+                glPushDebugGroup(GL_DEBUG_SOURCE_APPLICATION, 0u, group_name.size(), group_name.data());
+            }
+
+            auto const build_heightmap_uniforms = [&seconds_nb, this](GLuint program) {
+                // time uniform
+                glUniform1f(glGetUniformLocation(program, "time"), seconds_nb);
+
+                // Wave 1
+                glUniform1f(glGetUniformLocation(program, "wave1.Amplitude"), constant::waveOne.Amplitude);
+                glUniform1f(glGetUniformLocation(program, "wave1.Frequency"), constant::waveOne.Frequency);
+                glUniform1f(glGetUniformLocation(program, "wave1.Phase"), constant::waveOne.Phase);
+                glUniform1f(glGetUniformLocation(program, "wave1.Sharpness"), constant::waveOne.Sharpness);
+                glUniform2fv(glGetUniformLocation(program, "wave1.Direction"), 1, glm::value_ptr(constant::waveOne.Direction));
+
+                // Wave 2
+                glUniform1f(glGetUniformLocation(program, "wave2.Amplitude"), constant::waveTwo.Amplitude);
+                glUniform1f(glGetUniformLocation(program, "wave2.Frequency"), constant::waveTwo.Frequency);
+                glUniform1f(glGetUniformLocation(program, "wave2.Phase"), constant::waveTwo.Phase);
+                glUniform1f(glGetUniformLocation(program, "wave2.Sharpness"), constant::waveTwo.Sharpness);
+                glUniform2fv(glGetUniformLocation(program, "wave2.Direction"), 1, glm::value_ptr(constant::waveTwo.Direction));
+            };
+
+            glBindFramebuffer(GL_FRAMEBUFFER, heightmap_fbo);
+            GLenum const heightmap_draw_buffers[1] = { GL_COLOR_ATTACHMENT0 };
+            glDrawBuffers(1, heightmap_draw_buffers);
+            auto status_env = glCheckFramebufferStatus(GL_FRAMEBUFFER);
+            if (status_env != GL_FRAMEBUFFER_COMPLETE)
+                LogError("Something went wrong with framebuffer %u", heightmap_fbo);
+            glViewport(0, 0, constant::heightmap_res_x, constant::heightmap_res_y);
+
+            glClear(GL_DEPTH_BUFFER_BIT | GL_COLOR_BUFFER_BIT);
+
+            GLStateInspection::CaptureSnapshot("Heightmap Generation Pass");
+
+            glUseProgram(fill_heightmap_shader);
+            build_heightmap_uniforms(fill_heightmap_shader);
+            bonobo::drawFullscreen();
+
+            if (utils::opengl::debug::isSupported())
+            {
+                glPopDebugGroup();
+            }
 
             //
-            // Pass 1: Generate shadow map for sun
+            // Simulate water
+            //
+            GLuint sim_fbo = water_tex_counter == 0 ? water_fbo0 : water_fbo1;
+            GLuint drop_fbo = water_tex_counter == 0 ? water_fbo1 : water_fbo0;
+            GLuint sim_tex = water_tex_counter == 0 ? water_texture1 : water_texture0;
+            GLuint drop_tex = water_tex_counter == 0 ? water_texture0 : water_texture1;
+            water_tex_counter = (water_tex_counter + 1) % 2;
+            
+            glm::vec4 mouse_pos = glm::vec4{xpos, ypos, 0.0f, 1.0f};
+            glm::vec4 water_click_pos = mouse_pos;
+
+            std::cout << glm::to_string(water_click_pos) << std::endl;
+           
+            auto const water_drop_uniform = [this, &water_drop_counter, &mouse_down, &water_click_pos](GLuint program) {
+                glUniform2fv(glGetUniformLocation(program, "center"), 1, glm::value_ptr(glm::vec2(water_click_pos.x, water_click_pos.y)));
+                glUniform1f(glGetUniformLocation(program, "radius"), 0.03f);
+                glUniform1f(glGetUniformLocation(program, "strength"), mouse_down ? 0.08f : 0.0f);
+            };
+            water_drop_counter++;
+            // add drop
+            glBindFramebuffer(GL_FRAMEBUFFER, drop_fbo);
+            GLenum const drop_draw_buffers[1] = { GL_COLOR_ATTACHMENT0 };
+            glDrawBuffers(1, drop_draw_buffers);
+            status_env = glCheckFramebufferStatus(GL_FRAMEBUFFER);
+            if (status_env != GL_FRAMEBUFFER_COMPLETE)
+                LogError("Something went wrong with framebuffer %u", drop_fbo);
+            glViewport(0, 0, constant::heightmap_res_x, constant::heightmap_res_y);
+
+            GLStateInspection::CaptureSnapshot("Heightmap Generation Pass");
+            glUseProgram(water_drop_shader);
+            water_drop_uniform(water_drop_shader);
+            bind_texture_with_sampler(GL_TEXTURE_2D, 0, water_drop_shader, "sim_texture", sim_tex, heightmap_sampler);
+
+            bonobo::drawFullscreen();
+
+            // simulate
+            glBindFramebuffer(GL_FRAMEBUFFER, sim_fbo);
+            GLenum const sim_draw_buffers[1] = { GL_COLOR_ATTACHMENT0 };
+            glDrawBuffers(1, sim_draw_buffers);
+            status_env = glCheckFramebufferStatus(GL_FRAMEBUFFER);
+            if (status_env != GL_FRAMEBUFFER_COMPLETE)
+                LogError("Something went wrong with framebuffer %u", sim_fbo);
+            glViewport(0, 0, constant::heightmap_res_x, constant::heightmap_res_y);
+
+            GLStateInspection::CaptureSnapshot("Heightmap Generation Pass");
+            glUseProgram(simulate_water_shader);
+            //water_drop_uniform(simulate_water_shader);
+            bind_texture_with_sampler(GL_TEXTURE_2D, 0, simulate_water_shader, "sim_texture", sim_tex, heightmap_sampler);
+
+            bonobo::drawFullscreen();
+
+            //
+            // Pass 2.0: Generate shadow map for sun
             //
 
             glCullFace(GL_FRONT);
@@ -428,7 +644,61 @@ project::Project::run()
             {
                 glPopDebugGroup();
             }
-            
+
+            //
+            // Pass 2.1: Generate water depth map for sun
+            //
+
+            auto const resolve_uniforms = [&sunColor, &sunDir, &seconds_nb, this, &light_matrix, &framebuffer_width, &framebuffer_height](GLuint program) {
+                // COMMON
+                glUniformMatrix4fv(glGetUniformLocation(program, "view_projection_inverse"), 1, GL_FALSE,
+                    glm::value_ptr(mCamera.GetClipToWorldMatrix()));
+                glUniform3fv(glGetUniformLocation(program, "camera_position"), 1,
+                    glm::value_ptr(mCamera.mWorld.GetTranslation()));
+                glUniformMatrix4fv(glGetUniformLocation(program, "shadow_view_projection"), 1, GL_FALSE,
+                    glm::value_ptr(light_matrix));
+                glUniform3fv(glGetUniformLocation(program, "sun_dir"), 1,
+                    glm::value_ptr(sunDir));
+                glUniform2f(glGetUniformLocation(program, "shadowmap_texel_size"),
+                    1.0f / static_cast<float>(constant::light_texture_res_x),
+                    1.0f / static_cast<float>(constant::light_texture_res_y));
+                glUniform2f(glGetUniformLocation(program, "inv_res"),
+                    1.0f / static_cast<float>(framebuffer_width),
+                    1.0f / static_cast<float>(framebuffer_height));
+                glUniform3fv(glGetUniformLocation(program, "atmosphereColour"), 1,
+                    glm::value_ptr(constant::atmosphereColour));
+                glUniform3fv(glGetUniformLocation(program, "underwaterColour"), 1,
+                    glm::value_ptr(constant::underwaterColour));
+                glUniform1f(glGetUniformLocation(program, "MAMSL"),
+                    constant::MAMSL);
+                glUniform1f(glGetUniformLocation(program, "t"),
+                    seconds_nb);
+            };
+
+            glUseProgram(fill_water_depthmap_shader);
+            bind_texture_with_sampler(GL_TEXTURE_2D, 1, fill_water_depthmap_shader, "heightmap_texture", sim_tex, heightmap_sampler);
+
+            glCullFace(GL_BACK);
+
+            if (utils::opengl::debug::isSupported())
+            {
+                std::string const group_name = "Create water depth map Sun";
+                glPushDebugGroup(GL_DEBUG_SOURCE_APPLICATION, 0u, group_name.size(), group_name.data());
+            }
+            glBindFramebuffer(GL_FRAMEBUFFER, water_depth_fbo);
+            glViewport(0, 0, constant::light_texture_res_x, constant::light_texture_res_y);
+
+            glClear(GL_DEPTH_BUFFER_BIT);
+
+            GLStateInspection::CaptureSnapshot("Water depth map Generation");
+
+            for (auto const& element : transparents)
+                element.render(light_matrix, element.get_transform().GetMatrix(), fill_water_depthmap_shader, resolve_uniforms);
+
+            if (utils::opengl::debug::isSupported())
+            {
+                glPopDebugGroup();
+            }
 
             //
             // Pass 2: Generate environment map for sun
@@ -443,7 +713,7 @@ project::Project::run()
             glBindFramebuffer(GL_FRAMEBUFFER, environmentmap_fbo);
             GLenum const environment_draw_buffers[1] = { GL_COLOR_ATTACHMENT0 };
             glDrawBuffers(1, environment_draw_buffers);
-            auto status_env = glCheckFramebufferStatus(GL_FRAMEBUFFER);
+            status_env = glCheckFramebufferStatus(GL_FRAMEBUFFER);
             if (status_env != GL_FRAMEBUFFER_COMPLETE)
                 LogError("Something went wrong with framebuffer %u", environmentmap_fbo);
             glViewport(0, 0, constant::light_texture_res_x, constant::light_texture_res_y);
@@ -490,27 +760,12 @@ project::Project::run()
                 glUniform2f(glGetUniformLocation(program, "environmentmap_texel_size"),
                     1.0f / static_cast<float>(constant::light_texture_res_x),
                     1.0f / static_cast<float>(constant::light_texture_res_y));
-
-                // time uniform
-                glUniform1f(glGetUniformLocation(program, "time"), seconds_nb);
-
-                // Wave 1
-                glUniform1f(glGetUniformLocation(program, "wave1.Amplitude"), constant::waveOne.Amplitude);
-                glUniform1f(glGetUniformLocation(program, "wave1.Frequency"), constant::waveOne.Frequency);
-                glUniform1f(glGetUniformLocation(program, "wave1.Phase"), constant::waveOne.Phase);
-                glUniform1f(glGetUniformLocation(program, "wave1.Sharpness"), constant::waveOne.Sharpness);
-                glUniform2fv(glGetUniformLocation(program, "wave1.Direction"), 1, glm::value_ptr(constant::waveOne.Direction));
-
-                // Wave 2
-                glUniform1f(glGetUniformLocation(program, "wave2.Amplitude"), constant::waveTwo.Amplitude);
-                glUniform1f(glGetUniformLocation(program, "wave2.Frequency"), constant::waveTwo.Frequency);
-                glUniform1f(glGetUniformLocation(program, "wave2.Phase"), constant::waveTwo.Phase);
-                glUniform1f(glGetUniformLocation(program, "wave2.Sharpness"), constant::waveTwo.Sharpness);
-                glUniform2fv(glGetUniformLocation(program, "wave2.Direction"), 1, glm::value_ptr(constant::waveTwo.Direction));
             };
 
-            glUseProgram(render_underwater);
+            glUseProgram(fill_causticmap_shader);
             bind_texture_with_sampler(GL_TEXTURE_2D, 0, fill_causticmap_shader, "environmentmap_texture", environmentmap_texture, default_sampler);
+            bind_texture_with_sampler(GL_TEXTURE_2D, 1, fill_causticmap_shader, "heightmap_texture", sim_tex, heightmap_sampler);
+
 
             for (auto & element : transparents) 
                 element.render(light_matrix, element.get_transform().GetMatrix(), fill_causticmap_shader, false, caustic_set_uniforms);
@@ -543,66 +798,10 @@ project::Project::run()
 
             GLStateInspection::CaptureSnapshot("underwater Pass");
 
-            auto const resolve_uniforms = [&sunColor, &sunDir, &seconds_nb, this, &light_matrix, &framebuffer_width, &framebuffer_height](GLuint program) {
-                // COMMON
-                glUniformMatrix4fv(glGetUniformLocation(program, "view_projection_inverse"), 1, GL_FALSE,
-                    glm::value_ptr(mCamera.GetClipToWorldMatrix()));
-                glUniform3fv(glGetUniformLocation(program, "camera_position"), 1,
-                    glm::value_ptr(mCamera.mWorld.GetTranslation()));
-                glUniformMatrix4fv(glGetUniformLocation(program, "shadow_view_projection"), 1, GL_FALSE,
-                    glm::value_ptr(light_matrix));
-                glUniform3fv(glGetUniformLocation(program, "sun_dir"), 1,
-                    glm::value_ptr(sunDir));
-                glUniform2f(glGetUniformLocation(program, "shadowmap_texel_size"),
-                    1.0f / static_cast<float>(constant::light_texture_res_x),
-                    1.0f / static_cast<float>(constant::light_texture_res_y));
-                glUniform2f(glGetUniformLocation(program, "inv_res"),
-                    1.0f / static_cast<float>(framebuffer_width),
-                    1.0f / static_cast<float>(framebuffer_height));
-
-                // not active
-                glUniform1i(glGetUniformLocation(program, "is_water"), GL_FALSE);
-            };
-
-            auto const resolve_uniforms_plus_waves = [&sunColor, &sunDir, &seconds_nb, this, &light_matrix, &framebuffer_width, &framebuffer_height](GLuint program) {
-                // COMMON
-                glUniformMatrix4fv(glGetUniformLocation(program, "view_projection_inverse"), 1, GL_FALSE,
-                    glm::value_ptr(mCamera.GetClipToWorldMatrix()));
-                glUniform3fv(glGetUniformLocation(program, "camera_position"), 1,
-                    glm::value_ptr(mCamera.mWorld.GetTranslation()));
-                glUniformMatrix4fv(glGetUniformLocation(program, "shadow_view_projection"), 1, GL_FALSE,
-                    glm::value_ptr(light_matrix));
-                glUniform3fv(glGetUniformLocation(program, "sun_dir"), 1,
-                    glm::value_ptr(sunDir));
-                glUniform2f(glGetUniformLocation(program, "shadowmap_texel_size"),
-                    1.0f / static_cast<float>(constant::light_texture_res_x),
-                    1.0f / static_cast<float>(constant::light_texture_res_y));
-                glUniform2f(glGetUniformLocation(program, "inv_res"),
-                    1.0f / static_cast<float>(framebuffer_width),
-                    1.0f / static_cast<float>(framebuffer_height));
-
-                // activate
-                glUniform1i(glGetUniformLocation(program, "is_water"), GL_TRUE);
-
-                // time uniform
-                glUniform1f(glGetUniformLocation(program, "time"), seconds_nb);
-
-                // Wave 1
-                glUniform1f(glGetUniformLocation(program, "wave1.Amplitude"), constant::waveOne.Amplitude);
-                glUniform1f(glGetUniformLocation(program, "wave1.Frequency"), constant::waveOne.Frequency);
-                glUniform1f(glGetUniformLocation(program, "wave1.Phase"), constant::waveOne.Phase);
-                glUniform1f(glGetUniformLocation(program, "wave1.Sharpness"), constant::waveOne.Sharpness);
-                glUniform2fv(glGetUniformLocation(program, "wave1.Direction"), 1, glm::value_ptr(constant::waveOne.Direction));
-
-                // Wave 2
-                glUniform1f(glGetUniformLocation(program, "wave2.Amplitude"), constant::waveTwo.Amplitude);
-                glUniform1f(glGetUniformLocation(program, "wave2.Frequency"), constant::waveTwo.Frequency);
-                glUniform1f(glGetUniformLocation(program, "wave2.Phase"), constant::waveTwo.Phase);
-                glUniform1f(glGetUniformLocation(program, "wave2.Sharpness"), constant::waveTwo.Sharpness);
-                glUniform2fv(glGetUniformLocation(program, "wave2.Direction"), 1, glm::value_ptr(constant::waveTwo.Direction));
-            };
             glUseProgram(render_underwater);
             bind_texture_with_sampler(GL_TEXTURE_2D, 5, render_underwater, "shadow_texture", shadowmap_texture, shadow_sampler);
+            bind_texture_with_sampler(GL_TEXTURE_2D, 6, render_underwater, "causticmap_texture", causticmap_texture, caustics_sampler);
+            bind_texture_with_sampler(GL_TEXTURE_2D, 7, render_underwater, "water_depth_texture", water_depth_texture, shadow_sampler);
 
             for (auto const& element : solids)
                 element.render(mCamera.GetWorldToClipMatrix(), element.get_transform().GetMatrix(), render_underwater, resolve_uniforms);
@@ -619,6 +818,9 @@ project::Project::run()
             cube.render(mCamera.GetWorldToClipMatrix(), glm::mat4(1.0f), render_cubemap, cubemap_uniforms);
             glCullFace(GL_BACK);
 
+            //
+            //  Pass 5: Render final scene
+            //
             glBindFramebuffer(GL_FRAMEBUFFER, 0);
             glViewport(0, 0, framebuffer_width, framebuffer_height);
             glClear(GL_DEPTH_BUFFER_BIT | GL_COLOR_BUFFER_BIT);
@@ -631,28 +833,50 @@ project::Project::run()
             GLStateInspection::CaptureSnapshot("Cubemap Pass");
             cube.render(mCamera.GetWorldToClipMatrix(), glm::mat4(1.0f), render_cubemap, cubemap_uniforms);
             glCullFace(GL_BACK);
+
+            // Over water
+            glUseProgram(render_overwater);
+            bind_texture_with_sampler(GL_TEXTURE_2D, 5, render_overwater, "shadow_texture", shadowmap_texture, shadow_sampler);
+            bind_texture_with_sampler(GL_TEXTURE_2D, 6, render_overwater, "causticmap_texture", causticmap_texture, caustics_sampler);
+            bind_texture_with_sampler(GL_TEXTURE_2D, 7, render_overwater, "water_depth_texture", water_depth_texture, shadow_sampler);
+
+            for (auto const& element : solids)
+                element.render(mCamera.GetWorldToClipMatrix(), element.get_transform().GetMatrix(), render_overwater, resolve_uniforms);
+
             //
-            // Pass 6: render water
+            // Pass 6.1: render water
             //
             GLStateInspection::CaptureSnapshot("Water Pass");
+
+
+            glUseProgram(render_underwater);
+            bind_texture_with_sampler(GL_TEXTURE_2D, 5, render_underwater, "shadow_texture", shadowmap_texture, shadow_sampler);
+            bind_texture_with_sampler(GL_TEXTURE_2D, 6, render_underwater, "causticmap_texture", causticmap_texture, caustics_sampler);
+            bind_texture_with_sampler(GL_TEXTURE_2D, 7, render_underwater, "water_depth_texture", water_depth_texture, shadow_sampler);
 
             for (auto const& element : solids)
                 element.render(mCamera.GetWorldToClipMatrix(), element.get_transform().GetMatrix(), render_underwater, resolve_uniforms);
 
-            //glCullFace(GL_FRONT);
-            //for (auto const& element : transparents)
-            //    element.render(mCamera.GetWorldToClipMatrix(), element.get_transform().GetMatrix(), render_water, resolve_uniforms_plus_waves);
-            //glCullFace(GL_BACK);
+
+            glUseProgram(render_water);
+            bind_texture_with_sampler(GL_TEXTURE_2D, 5, render_water, "heightmap_texture", sim_tex, heightmap_sampler);
+            bind_texture_with_sampler(GL_TEXTURE_2D, 6, render_water, "underwater_texture", underwater_scene_texture, default_sampler);
+            bind_texture_with_sampler(GL_TEXTURE_2D, 8, render_water, "underwater_depth_texture", depth_texture, depth_sampler);
+
+            glCullFace(GL_FRONT);
+            for (auto const& element : transparents)
+                element.render(mCamera.GetWorldToClipMatrix(), element.get_transform().GetMatrix(), render_water, resolve_uniforms);
+            glCullFace(GL_BACK);
 
             for (auto const& element : transparents)
-                element.render(mCamera.GetWorldToClipMatrix(), element.get_transform().GetMatrix(), render_water, resolve_uniforms_plus_waves);
+                element.render(mCamera.GetWorldToClipMatrix(), element.get_transform().GetMatrix(), render_water, resolve_uniforms);
 
-            //glUseProgram(0u);
             if (utils::opengl::debug::isSupported())
             {
                 glPopDebugGroup();
             }
         }
+
         glBindFramebuffer(GL_FRAMEBUFFER, 0u);
         //
         // Pass 5: Draw wireframe cones on top of the final image for debugging purposes
@@ -670,11 +894,14 @@ project::Project::run()
         // Output content of the g-buffer as well as of the shadowmap, for debugging purposes
         //
         if (show_textures) {
-            bonobo::displayTexture({ 0.7f, 0.55f }, { 0.95f, 0.95f }, environmentmap_texture, default_sampler, { 0, 1, 2, -1 }, glm::uvec2(framebuffer_width, framebuffer_height), false);
+            //bonobo::displayTexture({ 0.7f, 0.55f }, { 0.95f, 0.95f }, environmentmap_texture, default_sampler, { 0, 1, 2, -1 }, glm::uvec2(framebuffer_width, framebuffer_height), false);
+            bonobo::displayTexture({ 0.7f, 0.55f }, { 0.95f, 0.95f }, water_texture0, heightmap_sampler, { 0, 1, 2, -1 }, glm::uvec2(framebuffer_width, framebuffer_height), false);
             bonobo::displayTexture({ 0.7f, 0.05f }, { 0.95f, 0.45f }, causticmap_texture, default_sampler, { 0, 1, 2, -1 }, glm::uvec2(framebuffer_width, framebuffer_height), false);
             bonobo::displayTexture({ 0.7f, -0.45f }, { 0.95f, -0.05f }, underwater_scene_texture, default_sampler, { 0, 1, 2, -1 }, glm::uvec2(framebuffer_width, framebuffer_height), false);
-            bonobo::displayTexture({ 0.7f, -0.95f }, { 0.95f, -0.55f }, shadowmap_texture, depth_sampler, { 0, 0, 0, -1 }, glm::uvec2(framebuffer_width, framebuffer_height), true, lightProjectionNearPlane, lightProjectionFarPlane);
+            bonobo::displayTexture({ 0.7f, -0.95f }, { 0.95f, -0.55f }, shadowmap_texture, depth_sampler, { 0, 0, 0, -1 }, glm::uvec2(framebuffer_width, framebuffer_height), false, lightProjectionNearPlane, lightProjectionFarPlane);
+            //bonobo::displayTexture({ 0.7f, -0.95f }, { 0.95f, -0.55f }, water_texture0, heightmap_sampler, { 0, 1, 2, -1 }, glm::uvec2(framebuffer_width, framebuffer_height), false);
         }
+
         //
         // Reset viewport back to normal
         //
@@ -706,10 +933,18 @@ project::Project::run()
 
     glDeleteProgram(render_underwater);
     render_underwater = 0u;
+    glDeleteProgram(render_water);
+    render_water = 0u;
+
+    glDeleteProgram(fill_heightmap_shader);
+    fill_heightmap_shader = 0u;
     glDeleteProgram(fill_shadowmap_shader);
     fill_shadowmap_shader = 0u;
-    glDeleteProgram(fill_diffuse_shader);
-    fill_diffuse_shader = 0u;
+    glDeleteProgram(fill_environmentmap_shader);
+    fill_environmentmap_shader = 0u;
+    glDeleteProgram(fill_causticmap_shader);
+    fill_causticmap_shader = 0u;
+
     glDeleteProgram(fallback_shader);
     fallback_shader = 0u;
 }
