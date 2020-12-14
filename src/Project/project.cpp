@@ -377,8 +377,6 @@ project::Project::run()
         GL_TEXTURE_2D, GL_DEPTH_COMPONENT32F, GL_DEPTH_COMPONENT, GL_FLOAT);
     auto const water_depth_texture = bonobo::createTexture(constant::light_texture_res_x, constant::light_texture_res_y,
         GL_TEXTURE_2D, GL_DEPTH_COMPONENT32F, GL_DEPTH_COMPONENT, GL_FLOAT);
-    auto const heightmap_texture = bonobo::createTexture(constant::heightmap_res_x, constant::heightmap_res_y,
-        GL_TEXTURE_2D, GL_RGBA32F);
     auto const water_texture0 = bonobo::createTexture(constant::heightmap_res_x, constant::heightmap_res_y,
         GL_TEXTURE_2D, GL_RGBA32F);
     auto const water_texture1 = bonobo::createTexture(constant::heightmap_res_x, constant::heightmap_res_y,
@@ -387,7 +385,6 @@ project::Project::run()
     //
     // Setup FBOs
     //
-    auto const heightmap_fbo = bonobo::createFBO({ heightmap_texture });
     auto const shadowmap_fbo = bonobo::createFBO({}, shadowmap_texture);
     auto const water_depth_fbo = bonobo::createFBO({}, water_depth_texture);
     auto const environmentmap_fbo = bonobo::createFBO({ environmentmap_texture });
@@ -553,69 +550,16 @@ project::Project::run()
                 constant::underwaterColour.y, constant::underwaterColour.z, 1.0f);
         }
 
-#if 0
-        glm::vec3 playerPos = mCamera.mWorld.GetTranslation();
-        playerPos.y = 0;
-        lightTransform.SetTranslate(playerPos);
-#endif 
 
         if (!shader_reload_failed) {
 
             /* RENDER DIRECTIONAL LIGHT */
             auto light_matrix = lightProjection * lightTransform.GetMatrixInverse();
             //
-            // Pass 1: Render heightmap 
+            // Pass 1: Simulate water heightmap
             //
             glCullFace(GL_BACK);
-            if (utils::opengl::debug::isSupported())
-            {
-                std::string const group_name = "Heightmap Generation";
-                glPushDebugGroup(GL_DEBUG_SOURCE_APPLICATION, 0u, group_name.size(), group_name.data());
-            }
 
-            auto const build_heightmap_uniforms = [&seconds_nb, this](GLuint program) {
-                // time uniform
-                glUniform1f(glGetUniformLocation(program, "time"), seconds_nb);
-
-                // Wave 1
-                glUniform1f(glGetUniformLocation(program, "wave1.Amplitude"), constant::waveOne.Amplitude);
-                glUniform1f(glGetUniformLocation(program, "wave1.Frequency"), constant::waveOne.Frequency);
-                glUniform1f(glGetUniformLocation(program, "wave1.Phase"), constant::waveOne.Phase);
-                glUniform1f(glGetUniformLocation(program, "wave1.Sharpness"), constant::waveOne.Sharpness);
-                glUniform2fv(glGetUniformLocation(program, "wave1.Direction"), 1, glm::value_ptr(constant::waveOne.Direction));
-
-                // Wave 2
-                glUniform1f(glGetUniformLocation(program, "wave2.Amplitude"), constant::waveTwo.Amplitude);
-                glUniform1f(glGetUniformLocation(program, "wave2.Frequency"), constant::waveTwo.Frequency);
-                glUniform1f(glGetUniformLocation(program, "wave2.Phase"), constant::waveTwo.Phase);
-                glUniform1f(glGetUniformLocation(program, "wave2.Sharpness"), constant::waveTwo.Sharpness);
-                glUniform2fv(glGetUniformLocation(program, "wave2.Direction"), 1, glm::value_ptr(constant::waveTwo.Direction));
-            };
-
-            glBindFramebuffer(GL_FRAMEBUFFER, heightmap_fbo);
-            GLenum const heightmap_draw_buffers[1] = { GL_COLOR_ATTACHMENT0 };
-            glDrawBuffers(1, heightmap_draw_buffers);
-            auto status_env = glCheckFramebufferStatus(GL_FRAMEBUFFER);
-            if (status_env != GL_FRAMEBUFFER_COMPLETE)
-                LogError("Something went wrong with framebuffer %u", heightmap_fbo);
-            glViewport(0, 0, constant::heightmap_res_x, constant::heightmap_res_y);
-
-            glClear(GL_DEPTH_BUFFER_BIT | GL_COLOR_BUFFER_BIT);
-
-            GLStateInspection::CaptureSnapshot("Heightmap Generation Pass");
-
-            glUseProgram(fill_heightmap_shader);
-            build_heightmap_uniforms(fill_heightmap_shader);
-            bonobo::drawFullscreen();
-
-            if (utils::opengl::debug::isSupported())
-            {
-                glPopDebugGroup();
-            }
-
-            //
-            // Simulate water
-            //
             GLuint sim_fbo = water_tex_counter == 0 ? water_fbo0 : water_fbo1;
             GLuint drop_fbo = water_tex_counter == 0 ? water_fbo1 : water_fbo0;
             GLuint sim_tex = water_tex_counter == 0 ? water_texture1 : water_texture0;
@@ -637,7 +581,7 @@ project::Project::run()
             glBindFramebuffer(GL_FRAMEBUFFER, drop_fbo);
             GLenum const drop_draw_buffers[1] = { GL_COLOR_ATTACHMENT0 };
             glDrawBuffers(1, drop_draw_buffers);
-            status_env = glCheckFramebufferStatus(GL_FRAMEBUFFER);
+            auto status_env = glCheckFramebufferStatus(GL_FRAMEBUFFER);
             if (status_env != GL_FRAMEBUFFER_COMPLETE)
                 LogError("Something went wrong with framebuffer %u", drop_fbo);
             glViewport(0, 0, constant::heightmap_res_x, constant::heightmap_res_y);
