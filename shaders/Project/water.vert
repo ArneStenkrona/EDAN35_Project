@@ -23,12 +23,14 @@ const float fresnelScale = 0.25;
 
 const float eta = 1 / 1.33;
 
+uniform bool IN_WATER;
+
 out VS_OUT {
-    vec2 refractedPosition[3];
+    vec3 refractedDir[3];
     float reflectionFactor;
-    vec3 worldPos;
-    float distCamSquared;
+    float renderFromBelow;
     vec3 reflected;
+    vec3 extra;
 } vs_out;
 
 
@@ -42,29 +44,51 @@ void main()
     modelPos = vec4(vertex + vec3(0,1,0) * info.r/*info.w*/, 1.0);
     waveNormal = normalize(vec3(info.b, sqrt(1.0 - dot(info.ba, info.ba)), info.a)).xyz;//normalize(normal_and_height.xyz);
 
-
     vec4 worldPos = vertex_model_to_world * modelPos;
     worldPos = worldPos / worldPos.w;
 
-    vs_out.worldPos = worldPos.xyz;
-    vs_out.distCamSquared = dot(worldPos.xyz, worldPos.xyz);
-
     vec3 eye = normalize(worldPos.xyz - camera_position.xyz);
-    vs_out.reflected = normalize(reflect(eye, normal));
+    vs_out.renderFromBelow = -eye.y;
+
+    mat4 proj = vertex_world_to_clip;
+    vec4 projUnderwaterTextPos;
+
+    float etaA = eta, etaB = eta * 0.98, etaC = eta * 0.92;
+
+    if (vs_out.renderFromBelow <= 0) {
+        waveNormal = -waveNormal;
+        etaB = eta * 0.99; etaC = eta * 0.98;
+        etaA = 1 / etaA; etaB = 1 / etaB; etaC = 1 / etaC; 
+    }
 
     vs_out.reflectionFactor = fresnelBias + fresnelScale * pow(1. + dot(eye, waveNormal), fresnelPower);
 
-    mat4 proj = vertex_world_to_clip;
+    vec3 reflected = normalize(reflect(eye, waveNormal));
 
-    vec4 projectedRefractedPosition;
-    projectedRefractedPosition = proj * vec4(worldPos.xyz + refractionFactor * normalize(refract(eye, waveNormal, eta * 1.00)), 1.0);
-    vs_out.refractedPosition[0] = projectedRefractedPosition.xy / projectedRefractedPosition.w;
+    vec3 refactA = refract(eye, waveNormal, etaA);
+    vec3 refactB = refract(eye, waveNormal, etaB);
+    vec3 refactC = refract(eye, waveNormal, etaC);
 
-    projectedRefractedPosition = proj * vec4(worldPos.xyz + refractionFactor * normalize(refract(eye, waveNormal, eta * 0.96)), 1.0);
-    vs_out.refractedPosition[1] = projectedRefractedPosition.xy / projectedRefractedPosition.w;
+    vs_out.extra = reflected;
 
-    projectedRefractedPosition = proj * vec4(worldPos.xyz + refractionFactor * normalize(refract(eye, waveNormal, eta * 0.92)), 1.0);
-    vs_out.refractedPosition[2] = projectedRefractedPosition.xy / projectedRefractedPosition.w;
+    if (vs_out.renderFromBelow <= 0) {
+        vs_out.reflected = reflected;
+
+        vs_out.refractedDir[0] = refactA;
+        vs_out.refractedDir[1] = refactB;
+        vs_out.refractedDir[2] = refactC;
+    } else {
+        vs_out.reflected = reflected;
+
+        projUnderwaterTextPos = proj * vec4(worldPos.xyz + refractionFactor * refactA, 1.0);
+        vs_out.refractedDir[0] = projUnderwaterTextPos.xyz / projUnderwaterTextPos.w;
+
+        projUnderwaterTextPos = proj * vec4(worldPos.xyz + refractionFactor * refactB, 1.0);
+        vs_out.refractedDir[1] = projUnderwaterTextPos.xyz / projUnderwaterTextPos.w;
+
+        projUnderwaterTextPos = proj * vec4(worldPos.xyz + refractionFactor * refactC, 1.0);
+        vs_out.refractedDir[2] = projUnderwaterTextPos.xyz / projUnderwaterTextPos.w;
+    }
 
     vec4 outpos = vertex_world_to_clip * worldPos;
     gl_Position = outpos;

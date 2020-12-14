@@ -128,7 +128,7 @@ project::Project::run()
 	std::vector<std::vector<bonobo::mesh_data>> solid_objects = { floor, ball };
     std::vector<std::vector<bonobo::mesh_data>> trans_objects = { water };
 
-	std::vector<glm::vec3> solid_translations = { { 0, -3.0f * constant::scale_lengths, 0}, { 0.0f, 2.0f/*-1.0f*/ * constant::scale_lengths, 0.0f } };
+	std::vector<glm::vec3> solid_translations = { { 0, -3.0f * constant::scale_lengths, 0}, { 0.0f, 0.0f/*-1.0f*/ * constant::scale_lengths, 0.0f } };
     std::vector<glm::vec3> trans_translations = { { 0.0f, constant::MAMSL * constant::scale_lengths, 0.0f },};
     // -0.5 is the midpoint between [2, -3]
     std::vector<glm::highp_vec3> CSO_translations = { { 10.0f, -0.5, 0.0f },
@@ -498,7 +498,7 @@ project::Project::run()
 
     float deltaTimeSec;
     double xpos, ypos;
-    bool mouse_down;
+    bool mouse_down = false;
 
     while (!glfwWindowShouldClose(window)) {
         auto const nowTime = std::chrono::high_resolution_clock::now();
@@ -525,7 +525,7 @@ project::Project::run()
         ypos /= height;
         xpos = 2.0*xpos-1.0;
         ypos = 2.0*ypos-1.0;
-        mouse_down = glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS;
+        mouse_down = glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_RIGHT) == GLFW_PRESS;
 
         if (inputHandler.GetKeycodeState(GLFW_KEY_R) & JUST_PRESSED) {
             shader_reload_failed = !program_manager.ReloadAllPrograms();
@@ -693,8 +693,10 @@ project::Project::run()
             //
             // Pass 2.1: Generate water depth map for sun
             //
-
-            auto const resolve_uniforms = [&sunColor, &sunDir, &seconds_nb, this, &light_matrix, &framebuffer_width, &framebuffer_height](GLuint program) {
+            bool isInWater = abs(mCamera.mWorld.GetTranslation().x) < 10 
+                && abs(mCamera.mWorld.GetTranslation().z) < 10 
+                && abs(mCamera.mWorld.GetTranslation().y + 0.5) < 2.5;
+            auto const resolve_uniforms = [&sunColor, &sunDir, &seconds_nb, this, &light_matrix, &framebuffer_width, &framebuffer_height, &isInWater](GLuint program) {
                 // COMMON
                 glUniformMatrix4fv(glGetUniformLocation(program, "view_projection_inverse"), 1, GL_FALSE,
                     glm::value_ptr(mCamera.GetClipToWorldMatrix()));
@@ -718,6 +720,8 @@ project::Project::run()
                     constant::MAMSL);
                 glUniform1f(glGetUniformLocation(program, "t"),
                     seconds_nb);
+                glUniform1i(glGetUniformLocation(program, "IN_WATER"),
+                    isInWater ? GL_TRUE : GL_FALSE);
             };
 
             glUseProgram(fill_water_depthmap_shader);

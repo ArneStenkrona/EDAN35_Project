@@ -22,12 +22,14 @@ uniform vec3 sun_dir;
 uniform vec2 inv_res;
 uniform float t;
 
+uniform bool IN_WATER;
+
 in VS_OUT {
-    vec2 refractedPosition[3];
+    vec3 refractedDir[3];
     float reflectionFactor;
-    vec3 worldPos;
-    float distCamSquared;
+    float renderFromBelow;
     vec3 reflected;
+    vec3 extra;
 } fs_in;
 
 
@@ -43,18 +45,50 @@ uniform vec3 underwaterColour;
 
 void main()
 {
-// Color coming from the sky reflection
-  vec3 reflectedColor = texture(cubemap_texture, fs_in.reflected).xyz;
-//  vec3 reflectedColor = (fs_in.worldPos.y < camera_position.y) ? underwaterColour : skycolor;
+    vec3 result;
+    vec3 reflectedColor = vec3(1.);
+    vec3 refractedColor = vec3(1.);
+    // Rendering bottom side of water
+    if (fs_in.renderFromBelow < 0) 
+    {
+        float dotA = dot(fs_in.refractedDir[0], fs_in.refractedDir[0]);
+        float dotB = dot(fs_in.refractedDir[1], fs_in.refractedDir[1]);
+        float dotC = dot(fs_in.refractedDir[2], fs_in.refractedDir[2]);
 
-  // Color coming from the environment refraction, applying chromatic aberration
-  vec3 refractedColor = vec3(1.);
-  refractedColor.r = texture2D(underwater_texture, fs_in.refractedPosition[0] * 0.5 + 0.5).r;
-  refractedColor.g = texture2D(underwater_texture, fs_in.refractedPosition[1] * 0.5 + 0.5).g;
-  refractedColor.b = texture2D(underwater_texture, fs_in.refractedPosition[2] * 0.5 + 0.5).b;
 
-  vec4 deep = vec4(mix(refractedColor, reflectedColor, clamp(fs_in.reflectionFactor, 0., 1.)), 1.);
-  //deep = mix(deep, shallow_water, 0.1);
+        // sample relfection.
+        reflectedColor = texture(cubemap_texture, fs_in.reflected).xyz;
 
-  colour = deep;
+        // sample from cubemap
+        refractedColor.r = texture(cubemap_texture, fs_in.refractedDir[0]).r;
+        refractedColor.g = texture(cubemap_texture, fs_in.refractedDir[1]).g;
+        refractedColor.b = texture(cubemap_texture, fs_in.refractedDir[2]).b;
+        
+        // when faced with total reflection.
+        if (dotA == 0)
+            refractedColor.r = reflectedColor.r;
+        if (dotB == 0)
+            refractedColor.g = reflectedColor.g;
+        if (dotC == 0)
+            refractedColor.b = reflectedColor.b;
+
+        refractedColor = mix(refractedColor, underwaterColour, IN_WATER ? 0.2 : 0.4);
+    }
+    else // Rendering top side of water
+    {
+        //sample reflection in cubemap
+        reflectedColor = texture(cubemap_texture, fs_in.reflected).xyz;
+
+        // Color coming from the environment refraction, applying chromatic aberration
+        refractedColor.r = texture2D(underwater_texture, fs_in.refractedDir[0].xy * 0.5 + 0.5).r;
+        refractedColor.g = texture2D(underwater_texture, fs_in.refractedDir[1].xy * 0.5 + 0.5).g;
+        refractedColor.b = texture2D(underwater_texture, fs_in.refractedDir[2].xy * 0.5 + 0.5).b;
+    }
+
+    result = mix(refractedColor, reflectedColor, clamp(fs_in.reflectionFactor, 0., 1.));
+
+    if (IN_WATER)
+        result = mix(result, underwaterColour, 0.2);
+    //result = fs_in.refractedDir[0];
+    colour = vec4(result, 1);
 }
