@@ -20,6 +20,7 @@ void FPSCamera<T, P>::SetProjection(T fovy, T aspect, T nnear, T nfar)
 	mProjectionInverse = glm::inverse(mProjection);
 }
 
+
 template<typename T, glm::precision P>
 void FPSCamera<T, P>::SetFov(T fovy)
 {
@@ -128,4 +129,24 @@ template<typename T, glm::precision P>
 glm::tvec3<T, P> FPSCamera<T, P>::GetClipToView(glm::tvec3<T, P> xyw)
 {
 	return xyw * glm::tvec3<T, P>(mProjectionInverse[0][0], mProjectionInverse[1][1], static_cast<T>(-1));
+}
+
+
+// new 
+template<typename T, glm::precision P>
+glm::tvec3<T, P> FPSCamera<T, P>::GetMouseRay(T s, T t)
+{
+	T theta = mFov;
+	T h = glm::tan(theta / 2);
+	T viewport_height = 2.0 * h;
+	T viewport_width = mAspect * viewport_height;
+
+	glm::tvec3<T, P> forward = glm::normalize(mWorld.GetFront()) * mNear;
+
+	glm::tvec3<T, P> horizontal = mNear * viewport_width * glm::normalize(mWorld.GetRight());
+
+	glm::tvec3<T, P> vertical = mNear * viewport_height * glm::normalize(mWorld.GetDown());
+
+	// from camera origin to world position of camera == ray direction
+	return glm::normalize(forward + s * horizontal + t * vertical);
 }

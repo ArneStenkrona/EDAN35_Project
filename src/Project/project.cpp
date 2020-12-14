@@ -33,8 +33,7 @@ namespace constant
     constexpr uint32_t light_texture_res_x = 2048;
     constexpr uint32_t light_texture_res_y = 2048;
 
-    constexpr uint32_t heightmap_res_x = 512;//4096;
-    constexpr uint32_t heightmap_res_y = 512;//4096;
+    constexpr uint32_t heightmap_res = 1024; //4096;
 
     constexpr float scale_lengths = 1.0f; // The scene is expressed in metres, hence the x1.
 
@@ -99,7 +98,7 @@ void
 project::Project::run()
 {
     const float wall_width = 20;
-    const unsigned int wall_res_width = 1000;
+    const unsigned int wall_res_width = constant::heightmap_res;
 
     const std::vector<bonobo::mesh_data> water = { parametric_shapes::createQuad(wall_width, wall_width, wall_res_width, wall_res_width) };
 	if (water.empty()) {
@@ -377,9 +376,9 @@ project::Project::run()
         GL_TEXTURE_2D, GL_DEPTH_COMPONENT32F, GL_DEPTH_COMPONENT, GL_FLOAT);
     auto const water_depth_texture = bonobo::createTexture(constant::light_texture_res_x, constant::light_texture_res_y,
         GL_TEXTURE_2D, GL_DEPTH_COMPONENT32F, GL_DEPTH_COMPONENT, GL_FLOAT);
-    auto const water_texture0 = bonobo::createTexture(constant::heightmap_res_x, constant::heightmap_res_y,
+    auto const water_texture0 = bonobo::createTexture(constant::heightmap_res, constant::heightmap_res,
         GL_TEXTURE_2D, GL_RGBA32F);
-    auto const water_texture1 = bonobo::createTexture(constant::heightmap_res_x, constant::heightmap_res_y,
+    auto const water_texture1 = bonobo::createTexture(constant::heightmap_res, constant::heightmap_res,
         GL_TEXTURE_2D, GL_RGBA32F);
 
     //
@@ -495,7 +494,12 @@ project::Project::run()
 
     float deltaTimeSec;
     double xpos, ypos;
-    bool mouse_down = false;
+    glm::vec3 mouseRay;
+    glm::vec2 mouseclick_on_water = { 0,0 };
+    glm::vec3 p;
+    glm::vec2 water_mouseray_position = { 0,0 };
+    bool water_intersection_hit = false;
+    bool prev_mouse_down = false, mouse_down = false;
 
     while (!glfwWindowShouldClose(window)) {
         auto const nowTime = std::chrono::high_resolution_clock::now();
@@ -505,6 +509,8 @@ project::Project::run()
             seconds_nb += std::chrono::duration<decltype(seconds_nb)>(deltaTimeUs).count();
 
         deltaTimeSec = std::chrono::duration<decltype(seconds_nb)>(deltaTimeUs).count();
+
+        water_intersection_hit = false;
 
         auto& io = ImGui::GetIO();
         inputHandler.SetUICapture(io.WantCaptureMouse, io.WantCaptureKeyboard);
@@ -520,9 +526,31 @@ project::Project::run()
 
         xpos /= width;
         ypos /= height;
-        xpos = 2.0*xpos-1.0;
-        ypos = 2.0*ypos-1.0;
+        // convert from [0,1] to [-0.5,0.5]
+        xpos = xpos - 0.5; 
+        ypos = ypos- 0.5;
+
+        prev_mouse_down = mouse_down;
         mouse_down = glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_RIGHT) == GLFW_PRESS;
+
+        // small plane ray intersection
+        mouseRay = mCamera.GetMouseRay(xpos, ypos);
+        float denominator = glm::dot(glm::vec3(0, 1, 0), mouseRay);
+        if (abs(denominator) > 1e-6) { // epsilon 
+            glm::vec3 p0 = glm::vec3(0, constant::MAMSL, 0);
+            glm::vec3 l0 = mCamera.mWorld.GetTranslation();
+            glm::vec3 p010 = p0 - l0;
+            float timeOfIntersect = glm::dot(p010, glm::vec3(0, 1, 0)) / denominator;
+            if (timeOfIntersect >= 0) {
+                p = l0 + mouseRay * timeOfIntersect;
+                glm::vec3 onPlaneDiff = p0 - p;
+                // NEGATIVE SIGN DUE TO FLIPPED SCALE IN TEXTURE
+                glm::vec2 st = glm::vec2(-onPlaneDiff.x, onPlaneDiff.z) / (wall_width * 0.5f);
+
+                water_mouseray_position = st;
+                water_intersection_hit = abs(st.x) <= 1 && abs(st.y) <= 1;
+            }
+        }
 
         if (inputHandler.GetKeycodeState(GLFW_KEY_R) & JUST_PRESSED) {
             shader_reload_failed = !program_manager.ReloadAllPrograms();
@@ -565,16 +593,15 @@ project::Project::run()
             GLuint sim_tex = water_tex_counter == 0 ? water_texture1 : water_texture0;
             GLuint drop_tex = water_tex_counter == 0 ? water_texture0 : water_texture1;
             water_tex_counter = (water_tex_counter + 1) % 2;
-            
-            glm::vec4 mouse_pos = glm::vec4{xpos, ypos, 0.0f, 1.0f};
-            glm::vec4 water_click_pos = mouse_pos;
 
-            //std::cout << glm::to_string(water_click_pos) << std::endl;
-           
-            auto const water_drop_uniform = [this, &water_drop_counter, &mouse_down, &water_click_pos](GLuint program) {
-                glUniform2fv(glGetUniformLocation(program, "center"), 1, glm::value_ptr(glm::vec2(water_click_pos.x, water_click_pos.y)));
+
+            const bool hitWater = mouse_down && water_intersection_hit;
+
+            auto const water_drop_uniform = [this, &water_drop_counter, &hitWater, &water_mouseray_position](GLuint program) {
+                glUniform2fv(glGetUniformLocation(program, "center"), 1, glm::value_ptr(water_mouseray_position));
+                //glUniform2fv(glGetUniformLocation(program, "center"), 1, glm::value_ptr(glm::vec2(0,0)));
                 glUniform1f(glGetUniformLocation(program, "radius"), 0.03f);
-                glUniform1f(glGetUniformLocation(program, "strength"), mouse_down ? 0.08f : 0.0f);
+                glUniform1f(glGetUniformLocation(program, "strength"), hitWater ? 0.08f : 0.0f);
             };
             water_drop_counter++;
             // add drop
@@ -584,7 +611,7 @@ project::Project::run()
             auto status_env = glCheckFramebufferStatus(GL_FRAMEBUFFER);
             if (status_env != GL_FRAMEBUFFER_COMPLETE)
                 LogError("Something went wrong with framebuffer %u", drop_fbo);
-            glViewport(0, 0, constant::heightmap_res_x, constant::heightmap_res_y);
+            glViewport(0, 0, constant::heightmap_res, constant::heightmap_res);
 
             GLStateInspection::CaptureSnapshot("Heightmap Generation Pass");
             glUseProgram(water_drop_shader);
@@ -600,7 +627,7 @@ project::Project::run()
             status_env = glCheckFramebufferStatus(GL_FRAMEBUFFER);
             if (status_env != GL_FRAMEBUFFER_COMPLETE)
                 LogError("Something went wrong with framebuffer %u", sim_fbo);
-            glViewport(0, 0, constant::heightmap_res_x, constant::heightmap_res_y);
+            glViewport(0, 0, constant::heightmap_res, constant::heightmap_res);
 
             GLStateInspection::CaptureSnapshot("Heightmap Generation Pass");
             glUseProgram(simulate_water_shader);
