@@ -28,6 +28,7 @@
 #include <cstdlib>
 #include <stdexcept>
 
+float global_scroll;
 namespace constant
 {
     constexpr uint32_t light_texture_res_x = 2048;
@@ -490,15 +491,25 @@ project::Project::run()
     bool shader_reload_failed = false;
 
     float deltaTimeSec;
-    double xpos, ypos;
+    double mouse_dx, mouse_dy;
+    double mouse_x = 0.0, mouse_y = 0.0;
+    double mouse_scroll;
     glm::vec3 mouseRay;
     glm::vec2 mouseclick_on_water = { 0,0 };
     glm::vec3 p;
     glm::vec2 water_mouseray_position = { 0,0 };
     bool water_intersection_hit = false;
-    bool prev_mouse_down = false, mouse_down = false;
+    bool prev_mouse_left_down = false, mouse_left_down = false;
+    bool prev_mouse_right_down = false, mouse_right_down = false;
+
+    bool orbit = true;
+    float orbit_r = 20.0f * constant::scale_lengths;
+    float orbit_phi = 0.0f;
+    float orbit_theta = 0.0f;
+    bool hold_tab = false;
 
     while (!glfwWindowShouldClose(window)) {
+        global_scroll = 0.0f; // sorry about this global :(
         auto const nowTime = std::chrono::high_resolution_clock::now();
         auto const deltaTimeUs = std::chrono::duration_cast<std::chrono::microseconds>(nowTime - lastTime);
         lastTime = nowTime;
@@ -512,26 +523,68 @@ project::Project::run()
         auto& io = ImGui::GetIO();
         inputHandler.SetUICapture(io.WantCaptureMouse, io.WantCaptureKeyboard);
 
-        glfwPollEvents();
-        inputHandler.Advance();
-        mCamera.Update(deltaTimeUs, inputHandler);
+        if ((inputHandler.GetKeycodeState(GLFW_KEY_TAB) & PRESSED)) {
+            if (!hold_tab) orbit = !orbit;
+            hold_tab = true;
+        } else {
+            hold_tab = false;
+        }
+
+        // get mouse down
+        prev_mouse_left_down = mouse_left_down;
+        mouse_left_down = glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS;
+        prev_mouse_right_down = mouse_right_down;
+        mouse_right_down = glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_RIGHT) == GLFW_PRESS;
 
         //getting cursor position
-        glfwGetCursorPos(window, &xpos, &ypos);
+        double mx, my;
+        glfwGetCursorPos(window, &mx, &my);
         int width, height;
         glfwGetWindowSize(window, &width, &height);
 
-        xpos /= width;
-        ypos /= height;
+        mx /= width;
+        my /= height;
         // convert from [0,1] to [-0.5,0.5]
-        xpos = xpos - 0.5; 
-        ypos = ypos- 0.5;
+        mx = mx - 0.5;
+        my = my - 0.5;
+        mouse_dx = mx - mouse_x;
+        mouse_dy = my - mouse_y;
+        mouse_x = mx;
+        mouse_y = my;
+        // scroll wheel
+        auto const scroll_callback = [](GLFWwindow* window, double xoffset, double yoffset) {
+            global_scroll = -yoffset;
+        };
 
-        prev_mouse_down = mouse_down;
-        mouse_down = glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_RIGHT) == GLFW_PRESS;
+        glfwSetScrollCallback(window, scroll_callback);
+
+
+        glfwPollEvents();
+        inputHandler.Advance();
+        if (orbit) {
+            if (mouse_left_down) {
+                orbit_theta += 4.0f * mouse_dx;
+                orbit_phi += 4.0f * mouse_dy;
+            }
+            orbit_r += global_scroll;
+            if (orbit_r < 1.0f * constant::scale_lengths) orbit_r = 1.0f * constant::scale_lengths;
+            if (orbit_r > 30.0f*constant::scale_lengths) orbit_r = 30.0f * constant::scale_lengths;
+
+            if (orbit_phi > glm::pi<float>() * 0.45f) orbit_phi = glm::pi<float>() * 0.45f;
+            if (orbit_phi < -glm::pi<float>() * 0.45f) orbit_phi = -glm::pi<float>() * 0.45f;
+
+            float x = orbit_r * glm::cos(orbit_phi) * glm::cos(orbit_theta);
+            float y = orbit_r * glm::sin(orbit_phi);
+            float z = orbit_r * glm::cos(orbit_phi) * glm::sin(orbit_theta);
+
+            mCamera.mWorld.SetTranslate(glm::vec3(x,y,z));
+            mCamera.mWorld.LookAt(glm::vec3(0.0f,0.0f,0.0f));
+        } else {
+            mCamera.Update(deltaTimeUs, inputHandler);
+        }
 
         // small plane ray intersection
-        mouseRay = mCamera.GetMouseRay(xpos, ypos);
+        mouseRay = mCamera.GetMouseRay(mouse_x, mouse_y);
         float denominator = glm::dot(glm::vec3(0, 1, 0), mouseRay);
         if (abs(denominator) > 1e-6) { // epsilon 
             glm::vec3 p0 = glm::vec3(0, constant::MAMSL, 0);
@@ -585,7 +638,7 @@ project::Project::run()
             //
             glCullFace(GL_BACK);
 
-            const bool hitWater = mouse_down && water_intersection_hit;
+            const bool hitWater = mouse_right_down && water_intersection_hit;
 
             auto const water_drop_uniform = [this, &hitWater, &water_mouseray_position](GLuint program) {
                 glUniform2fv(glGetUniformLocation(program, "center"), 1, glm::value_ptr(water_mouseray_position));
