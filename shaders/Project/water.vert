@@ -31,6 +31,7 @@ out VS_OUT {
     float renderFromBelow;
     vec3 reflected;
     vec3 extra;
+    float waveHeight;
 } vs_out;
 
 
@@ -43,6 +44,8 @@ void main()
 
     modelPos = vec4(vertex + vec3(0,1,0) * info.r/*info.w*/, 1.0);
     waveNormal = normalize(vec3(info.b, sqrt(1.0 - dot(info.ba, info.ba)), info.a)).xyz;//normalize(normal_and_height.xyz);
+
+    vs_out.waveHeight = info.r;
 
     vec4 worldPos = vertex_model_to_world * modelPos;
     worldPos = worldPos / worldPos.w;

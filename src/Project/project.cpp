@@ -381,6 +381,7 @@ project::Project::run()
         GL_TEXTURE_2D, GL_RGBA32F);
     auto const water_texture1 = bonobo::createTexture(constant::heightmap_res, constant::heightmap_res,
         GL_TEXTURE_2D, GL_RGBA32F);
+    auto const reflection_texture = bonobo::createTexture(framebuffer_width, framebuffer_height);
 
     //
     // Setup FBOs
@@ -392,6 +393,7 @@ project::Project::run()
     auto const underwater_scene_fbo = bonobo::createFBO({ underwater_scene_texture }, depth_texture);
     auto const water_fbo0 = bonobo::createFBO({ water_texture0 });
     auto const water_fbo1 = bonobo::createFBO({ water_texture1 });
+    auto const reflection_fbo = bonobo::createFBO({ reflection_texture }, depth_texture);
     //
     // Setup samplers
     //
@@ -673,7 +675,6 @@ project::Project::run()
 
             GLStateInspection::CaptureSnapshot("Heightmap Generation Pass");
             glUseProgram(simulate_water_shader);
-            //water_drop_uniform(simulate_water_shader);
             bind_texture_with_sampler(GL_TEXTURE_2D, 0, simulate_water_shader, "sim_texture", water_texture0, heightmap_sampler);
 
             bonobo::drawFullscreen();
@@ -881,6 +882,37 @@ project::Project::run()
             glCullFace(GL_BACK);
 
             //
+            // Pass ?.?? Render reflection
+            //
+            // reflect camera about water plane
+            glm::vec3 p0 = glm::vec3(0.0f, constant::MAMSL, 0.0f);
+            glm::vec3 pN = glm::vec3(0.0f, 1.0f, 0.0f);
+            glm::vec3 cPos = mCamera.mWorld.GetTranslation();
+            float dist = glm::dot(pN, cPos);
+            glm::vec3 mirroredCpos = cPos - 2.0f * dist * pN;
+            glm::vec3 mirroredCDir = glm::reflect(mCamera.mWorld.GetFront(), pN);
+            glm::vec3 mirroredCUp = glm::reflect(mCamera.mWorld.GetUp(), pN);
+
+            glm::mat4 reflectedLightMatrix = mCamera.GetViewToClipMatrix() * glm::lookAt(mirroredCpos, mirroredCpos + mirroredCDir, mirroredCUp);
+
+            glBindFramebuffer(GL_FRAMEBUFFER, reflection_fbo);
+            GLenum const reflection_draw_buffers[1] = { GL_COLOR_ATTACHMENT0 };
+            glDrawBuffers(1, reflection_draw_buffers);
+            status_env = glCheckFramebufferStatus(GL_FRAMEBUFFER);
+            if (status_env != GL_FRAMEBUFFER_COMPLETE)
+                LogError("Something went wrong with framebuffer %u", reflection_fbo);
+
+            glViewport(0, 0, framebuffer_width, framebuffer_height);
+            glClear(GL_DEPTH_BUFFER_BIT | GL_COLOR_BUFFER_BIT);
+
+            for (auto const& element : solids)
+                element.render(reflectedLightMatrix, element.get_transform().GetMatrix(), render_underwater, resolve_uniforms);
+
+            glCullFace(GL_FRONT);
+            cube.render(reflectedLightMatrix, glm::mat4(1.0f), render_cubemap, cubemap_uniforms);
+            glCullFace(GL_BACK);
+
+            //
             //  Pass 5: Render final scene
             //
             glBindFramebuffer(GL_FRAMEBUFFER, 0);
@@ -924,6 +956,7 @@ project::Project::run()
             bind_texture_with_sampler(GL_TEXTURE_2D, 5, render_water, "heightmap_texture", water_texture1, heightmap_sampler);
             bind_texture_with_sampler(GL_TEXTURE_2D, 6, render_water, "underwater_texture", underwater_scene_texture, default_sampler);
             bind_texture_with_sampler(GL_TEXTURE_2D, 8, render_water, "underwater_depth_texture", depth_texture, depth_sampler);
+            bind_texture_with_sampler(GL_TEXTURE_2D, 8, render_water, "reflection_texture", reflection_texture, default_sampler);
 
             glCullFace(GL_FRONT);
             for (auto const& element : transparents)
@@ -968,7 +1001,7 @@ project::Project::run()
             //bonobo::displayTexture({ 0.7f, 0.55f }, { 0.95f, 0.95f }, environmentmap_texture, default_sampler, { 0, 1, 2, -1 }, glm::uvec2(framebuffer_width, framebuffer_height), false);
             bonobo::displayTexture({ 0.7f, 0.55f }, { 0.95f, 0.95f }, water_texture0, heightmap_sampler, { 0, 1, 2, -1 }, glm::uvec2(framebuffer_width, framebuffer_height), false);
             bonobo::displayTexture({ 0.7f, 0.05f }, { 0.95f, 0.45f }, causticmap_texture, default_sampler, { 0, 1, 2, -1 }, glm::uvec2(framebuffer_width, framebuffer_height), false);
-            bonobo::displayTexture({ 0.7f, -0.45f }, { 0.95f, -0.05f }, underwater_scene_texture, default_sampler, { 0, 1, 2, -1 }, glm::uvec2(framebuffer_width, framebuffer_height), false);
+            bonobo::displayTexture({ 0.7f, -0.45f }, { 0.95f, -0.05f }, reflection_texture, default_sampler, { 0, 1, 2, -1 }, glm::uvec2(framebuffer_width, framebuffer_height), false);
             bonobo::displayTexture({ 0.7f, -0.95f }, { 0.95f, -0.55f }, shadowmap_texture, depth_sampler, { 0, 0, 0, -1 }, glm::uvec2(framebuffer_width, framebuffer_height), false, lightProjectionNearPlane, lightProjectionFarPlane);
             //bonobo::displayTexture({ 0.7f, -0.95f }, { 0.95f, -0.55f }, water_texture0, heightmap_sampler, { 0, 1, 2, -1 }, glm::uvec2(framebuffer_width, framebuffer_height), false);
         }

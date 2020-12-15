@@ -13,6 +13,7 @@ uniform sampler2D opacity_texture;
 uniform sampler2D underwater_texture;
 uniform samplerCube cubemap_texture;
 uniform sampler2D underwater_depth_texture;
+uniform sampler2D reflection_texture;
 uniform mat4 normal_model_to_world;
 uniform vec3 camera_position;
 uniform mat4 shadow_view_projection;
@@ -30,6 +31,7 @@ in VS_OUT {
     float renderFromBelow;
     vec3 reflected;
     vec3 extra;
+    float waveHeight;
 } fs_in;
 
 
@@ -55,9 +57,9 @@ void main()
         float dotB = dot(fs_in.refractedDir[1], fs_in.refractedDir[1]);
         float dotC = dot(fs_in.refractedDir[2], fs_in.refractedDir[2]);
 
-
-        // sample relfection.
-        reflectedColor = texture(cubemap_texture, fs_in.reflected).xyz;
+        // sample relfection based on wave heuristic
+        vec2 refUV = gl_FragCoord.xy * inv_res;
+        reflectedColor = texture2D(reflection_texture, vec2(1 - refUV.x, refUV.y) + fs_in.waveHeight * normalize(fs_in.reflected.xz)).rgb;
 
         // sample from cubemap
         refractedColor.r = texture(cubemap_texture, fs_in.refractedDir[0]).r;
@@ -87,8 +89,9 @@ void main()
 
     result = mix(refractedColor, reflectedColor, clamp(fs_in.reflectionFactor, 0., 1.));
 
-    if (IN_WATER)
+    if (IN_WATER) {
         result = mix(result, underwaterColour, 0.2);
+    }
     //result = fs_in.refractedDir[0];
     colour = vec4(result, 1);
 }
