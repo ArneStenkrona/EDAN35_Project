@@ -463,9 +463,6 @@ project::Project::run()
     float const lightProjectionNearPlane = -constant::shadow_depth_half * constant::scale_lengths;
     float const lightProjectionFarPlane = constant::shadow_depth_half * constant::scale_lengths;
 
-    int water_tex_counter = 0;
-    long water_drop_counter = 0;
-
 	TRSTransformf lightTransform;
     lightTransform.SetTranslate(-sunDir);
 
@@ -588,51 +585,43 @@ project::Project::run()
             //
             glCullFace(GL_BACK);
 
-            GLuint sim_fbo = water_tex_counter == 0 ? water_fbo0 : water_fbo1;
-            GLuint drop_fbo = water_tex_counter == 0 ? water_fbo1 : water_fbo0;
-            GLuint sim_tex = water_tex_counter == 0 ? water_texture1 : water_texture0;
-            GLuint drop_tex = water_tex_counter == 0 ? water_texture0 : water_texture1;
-            water_tex_counter = (water_tex_counter + 1) % 2;
-
-
             const bool hitWater = mouse_down && water_intersection_hit;
 
-            auto const water_drop_uniform = [this, &water_drop_counter, &hitWater, &water_mouseray_position](GLuint program) {
+            auto const water_drop_uniform = [this, &hitWater, &water_mouseray_position](GLuint program) {
                 glUniform2fv(glGetUniformLocation(program, "center"), 1, glm::value_ptr(water_mouseray_position));
                 //glUniform2fv(glGetUniformLocation(program, "center"), 1, glm::value_ptr(glm::vec2(0,0)));
                 glUniform1f(glGetUniformLocation(program, "radius"), 0.03f);
                 glUniform1f(glGetUniformLocation(program, "strength"), hitWater ? 0.08f : 0.0f);
             };
-            water_drop_counter++;
             // add drop
-            glBindFramebuffer(GL_FRAMEBUFFER, drop_fbo);
+            glBindFramebuffer(GL_FRAMEBUFFER, water_fbo0);
             GLenum const drop_draw_buffers[1] = { GL_COLOR_ATTACHMENT0 };
             glDrawBuffers(1, drop_draw_buffers);
             auto status_env = glCheckFramebufferStatus(GL_FRAMEBUFFER);
             if (status_env != GL_FRAMEBUFFER_COMPLETE)
-                LogError("Something went wrong with framebuffer %u", drop_fbo);
+                LogError("Something went wrong with framebuffer %u", water_fbo0);
             glViewport(0, 0, constant::heightmap_res, constant::heightmap_res);
 
             GLStateInspection::CaptureSnapshot("Heightmap Generation Pass");
             glUseProgram(water_drop_shader);
             water_drop_uniform(water_drop_shader);
-            bind_texture_with_sampler(GL_TEXTURE_2D, 0, water_drop_shader, "sim_texture", sim_tex, heightmap_sampler);
+            bind_texture_with_sampler(GL_TEXTURE_2D, 0, water_drop_shader, "sim_texture", water_texture1, heightmap_sampler);
 
             bonobo::drawFullscreen();
 
             // simulate
-            glBindFramebuffer(GL_FRAMEBUFFER, sim_fbo);
+            glBindFramebuffer(GL_FRAMEBUFFER, water_fbo1);
             GLenum const sim_draw_buffers[1] = { GL_COLOR_ATTACHMENT0 };
             glDrawBuffers(1, sim_draw_buffers);
             status_env = glCheckFramebufferStatus(GL_FRAMEBUFFER);
             if (status_env != GL_FRAMEBUFFER_COMPLETE)
-                LogError("Something went wrong with framebuffer %u", sim_fbo);
+                LogError("Something went wrong with framebuffer %u", water_fbo1);
             glViewport(0, 0, constant::heightmap_res, constant::heightmap_res);
 
             GLStateInspection::CaptureSnapshot("Heightmap Generation Pass");
             glUseProgram(simulate_water_shader);
             //water_drop_uniform(simulate_water_shader);
-            bind_texture_with_sampler(GL_TEXTURE_2D, 0, simulate_water_shader, "sim_texture", sim_tex, heightmap_sampler);
+            bind_texture_with_sampler(GL_TEXTURE_2D, 0, simulate_water_shader, "sim_texture", water_texture0, heightmap_sampler);
 
             bonobo::drawFullscreen();
 
@@ -696,7 +685,7 @@ project::Project::run()
             };
 
             glUseProgram(fill_water_depthmap_shader);
-            bind_texture_with_sampler(GL_TEXTURE_2D, 1, fill_water_depthmap_shader, "heightmap_texture", sim_tex, heightmap_sampler);
+            bind_texture_with_sampler(GL_TEXTURE_2D, 1, fill_water_depthmap_shader, "heightmap_texture", water_texture1, heightmap_sampler);
 
             glCullFace(GL_BACK);
 
@@ -784,7 +773,7 @@ project::Project::run()
 
             glUseProgram(fill_causticmap_shader);
             bind_texture_with_sampler(GL_TEXTURE_2D, 0, fill_causticmap_shader, "environmentmap_texture", environmentmap_texture, default_sampler);
-            bind_texture_with_sampler(GL_TEXTURE_2D, 1, fill_causticmap_shader, "heightmap_texture", sim_tex, heightmap_sampler);
+            bind_texture_with_sampler(GL_TEXTURE_2D, 1, fill_causticmap_shader, "heightmap_texture", water_texture1, heightmap_sampler);
 
 
             for (auto & element : transparents) 
@@ -879,7 +868,7 @@ project::Project::run()
 
 
             glUseProgram(render_water);
-            bind_texture_with_sampler(GL_TEXTURE_2D, 5, render_water, "heightmap_texture", sim_tex, heightmap_sampler);
+            bind_texture_with_sampler(GL_TEXTURE_2D, 5, render_water, "heightmap_texture", water_texture1, heightmap_sampler);
             bind_texture_with_sampler(GL_TEXTURE_2D, 6, render_water, "underwater_texture", underwater_scene_texture, default_sampler);
             bind_texture_with_sampler(GL_TEXTURE_2D, 8, render_water, "underwater_depth_texture", depth_texture, depth_sampler);
 
@@ -892,7 +881,7 @@ project::Project::run()
                 element.render(mCamera.GetWorldToClipMatrix(), element.get_transform().GetMatrix(), render_water, resolve_uniforms);
 
             glUseProgram(water_wall_shader);
-            bind_texture_with_sampler(GL_TEXTURE_2D, 5, water_wall_shader, "heightmap_texture", sim_tex, heightmap_sampler);
+            bind_texture_with_sampler(GL_TEXTURE_2D, 5, water_wall_shader, "heightmap_texture", water_texture1, heightmap_sampler);
             bind_texture_with_sampler(GL_TEXTURE_2D, 6, water_wall_shader, "underwater_texture", underwater_scene_texture, default_sampler);
             glCullFace(GL_FRONT);
             for (auto const& element : transparents_walls)
