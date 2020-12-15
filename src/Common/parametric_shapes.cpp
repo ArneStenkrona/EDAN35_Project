@@ -28,13 +28,13 @@ parametric_shapes::createQuad(float width, float height, unsigned int resw, unsi
 
 	for (int y = 0; y < resh + 1; y++) {
 		for (int x = 0; x < resw + 1; x++) {
-			vertices[y * (resh + 1) + x] = glm::vec3(x * stepx - half_width, 0, half_height - y * stepy);
-			tangents[y * (resh + 1) + x] = glm::vec3(-1, 0, 0);
-			binormals[y * (resh + 1) + x] = glm::vec3(0, 0, 1);
-			normals[y * (resh + 1) + x] = glm::vec3(0, 1, 0);//glm::cross(tangents[y * (resh + 1) + x], binormals[y * (resh + 1) + x]);
+			vertices[y * (resw + 1) + x] = glm::vec3(x * stepx - half_width, 0, half_height - y * stepy);
+			tangents[y * (resw + 1) + x] = glm::vec3(-1, 0, 0);
+			binormals[y * (resw + 1) + x] = glm::vec3(0, 0, 1);
+			normals[y * (resw + 1) + x] = glm::vec3(0, 1, 0);//glm::cross(tangents[y * (resh + 1) + x], binormals[y * (resh + 1) + x]);
 			float xstep = static_cast<float>(x) / static_cast<float>(resw);
 			float ystep = static_cast<float>(y) / static_cast<float>(resh);
-			texcoords[y * (resh + 1) + x] = glm::vec3(xstep, ystep, 0); // x,y
+			texcoords[y * (resw + 1) + x] = glm::vec3(xstep, ystep, 0); // x,y
 		}
 	}
 

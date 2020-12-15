@@ -35,6 +35,8 @@ public:
 	glm::tvec3<T, P> GetClipToWorld(glm::tvec3<T, P> xyw);
 	glm::tvec3<T, P> GetClipToView(glm::tvec3<T, P> xyw);
 
+	glm::tvec3<T, P> GetMouseRay(T s, T t);
+
 public:
 	TRSTransform<T, P> mWorld;
 	T mMovementSpeed;
