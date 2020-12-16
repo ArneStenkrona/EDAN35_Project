@@ -885,11 +885,13 @@ project::Project::run()
             // Pass ?.?? Render reflection
             //
             // reflect camera about water plane
-            glm::vec3 p0 = glm::vec3(0.0f, constant::MAMSL, 0.0f);
+            glm::vec3 p0 = glm::vec3(0.0f, constant::MAMSL * constant::scale_lengths, 0.0f);
             glm::vec3 pN = glm::vec3(0.0f, 1.0f, 0.0f);
             glm::vec3 cPos = mCamera.mWorld.GetTranslation();
-            float dist = glm::dot(pN, cPos);
-            glm::vec3 mirroredCpos = cPos - 2.0f * dist * pN;
+            glm::vec3 v = cPos - p0;
+            float dist = glm::dot(pN, v);
+            glm::vec3 mirroredCpos = cPos - (2.0f * dist * pN);
+            std::cout << "cam: " << cPos.y << ", mir: " << mirroredCpos.y << std::endl;
             glm::vec3 mirroredCDir = glm::reflect(mCamera.mWorld.GetFront(), pN);
             glm::vec3 mirroredCUp = glm::reflect(mCamera.mWorld.GetUp(), pN);
 
