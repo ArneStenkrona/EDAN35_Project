@@ -32,6 +32,7 @@ in VS_OUT {
     vec3 reflected;
     vec3 extra;
     float waveHeight;
+    vec3 projectedReflected;
 } fs_in;
 
 
@@ -59,7 +60,7 @@ void main()
 
         // sample relfection based on wave heuristic
         vec2 refUV = gl_FragCoord.xy * inv_res;
-        reflectedColor = texture2D(reflection_texture, vec2(1 - refUV.x, refUV.y) + fs_in.waveHeight * normalize(fs_in.reflected.xz)).rgb;
+        reflectedColor = texture2D(reflection_texture, vec2(1 - refUV.x, refUV.y) + fs_in.waveHeight * normalize(fs_in.projectedReflected.xy)).rgb;
 
         // sample from cubemap
         refractedColor.r = texture(cubemap_texture, fs_in.refractedDir[0]).r;
@@ -92,6 +93,6 @@ void main()
     if (IN_WATER) {
         result = mix(result, underwaterColour, 0.2);
     }
-    //result = fs_in.refractedDir[0];
+
     colour = vec4(result, 1);
 }

@@ -60,7 +60,7 @@ layout (location = 0) out vec4 underwater_scene;
 
 void main()
 {   
-    vec4 lightPos = shadow_view_projection * (fs_in.worldPos + 0.01 * vec4(fs_in.normal,0.));
+    vec4 lightPos = shadow_view_projection * (fs_in.worldPos + 0.01 * vec4(fs_in.normal,0.)); // normal biased
     lightPos = lightPos / lightPos.w;
     vec2 light_coord = (lightPos).xy * 0.5 + 0.5;
 
@@ -137,10 +137,6 @@ void main()
     
     if (samples == 0)
         shadowMultiplier = 1.0;
-
-    // bias against shadow acne
-    //if (shadowMultiplier < 0.05)
-        //shadowMultiplier = 0;
 
     result *= shadowMultiplier;
     result = mix(result, underwaterColour, 0.2);

@@ -32,6 +32,7 @@ out VS_OUT {
     vec3 reflected;
     vec3 extra;
     float waveHeight;
+    vec3 projectedReflected;
 } vs_out;
 
 
@@ -44,7 +45,6 @@ void main()
 
     modelPos = vec4(vertex + vec3(0,1,0) * info.r/*info.w*/, 1.0);
     waveNormal = normalize(vec3(info.b, sqrt(1.0 - dot(info.ba, info.ba)), info.a)).xyz;//normalize(normal_and_height.xyz);
-
     vs_out.waveHeight = info.r;
 
     vec4 worldPos = vertex_model_to_world * modelPos;
@@ -92,6 +92,8 @@ void main()
         projUnderwaterTextPos = proj * vec4(worldPos.xyz + refractionFactor * refactC, 1.0);
         vs_out.refractedDir[2] = projUnderwaterTextPos.xyz / projUnderwaterTextPos.w;
     }
+
+    vs_out.projectedReflected = (vertex_world_to_clip * vec4(vs_out.reflected, 0.)).xyz;
 
     vec4 outpos = vertex_world_to_clip * worldPos;
     gl_Position = outpos;

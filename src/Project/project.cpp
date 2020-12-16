@@ -479,6 +479,13 @@ project::Project::run()
 
     auto seconds_nb = 0.0f;
 
+    glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
+    glBindFramebuffer(GL_FRAMEBUFFER, water_fbo0);
+    glClear(GL_COLOR_BUFFER_BIT);
+    glBindFramebuffer(GL_FRAMEBUFFER, water_fbo1);
+    glClear(GL_COLOR_BUFFER_BIT);
+
+
     glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
     glClearDepthf(1.0f);
     glEnable(GL_DEPTH_TEST);
