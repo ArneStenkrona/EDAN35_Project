@@ -891,7 +891,6 @@ project::Project::run()
             glm::vec3 v = cPos - p0;
             float dist = glm::dot(pN, v);
             glm::vec3 mirroredCpos = cPos - (2.0f * dist * pN);
-            std::cout << "cam: " << cPos.y << ", mir: " << mirroredCpos.y << std::endl;
             glm::vec3 mirroredCDir = glm::reflect(mCamera.mWorld.GetFront(), pN);
             glm::vec3 mirroredCUp = glm::reflect(mCamera.mWorld.GetUp(), pN);
 
