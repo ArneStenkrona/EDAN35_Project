@@ -28,7 +28,11 @@
 #include <cstdlib>
 #include <stdexcept>
 
+// mouse scroll delta
+// global since glfw window-data pointer
+// is already occupied.
 float global_scroll;
+
 namespace constant
 {
     constexpr uint32_t light_texture_res_x = 2048;
@@ -687,7 +691,7 @@ project::Project::run()
             bonobo::drawFullscreen();
 
             //
-            // Pass 2.0: Generate shadow map for sun
+            // Pass 2: Generate shadow map for sun
             //
 
             glCullFace(GL_FRONT);
@@ -712,7 +716,7 @@ project::Project::run()
             }
 
             //
-            // Pass 2.1: Generate water depth map for sun
+            // Pass 3: Generate water depth map for sun
             //
             bool isInWater = abs(mCamera.mWorld.GetTranslation().x) < 10 
                 && abs(mCamera.mWorld.GetTranslation().z) < 10 
@@ -771,7 +775,7 @@ project::Project::run()
             }
 
             //
-            // Pass 2: Generate environment map for sun
+            // Pass 4: Generate environment map for sun
             //
             glCullFace(GL_BACK);
             if (utils::opengl::debug::isSupported())
@@ -800,7 +804,7 @@ project::Project::run()
             }
 
             //
-            // Pass 3: Generate caustic map for sun
+            // Pass 5: Generate caustic map for sun
             //
             glCullFace(GL_BACK);
             if (utils::opengl::debug::isSupported())
@@ -845,7 +849,7 @@ project::Project::run()
             }
 
             //
-            // Pass 4: render underwater scene
+            // Pass 6.0: render underwater texture
             //
             glCullFace(GL_BACK);
             glDepthFunc(GL_LESS);
@@ -877,7 +881,7 @@ project::Project::run()
                 element.render(mCamera.GetWorldToClipMatrix(), element.get_transform().GetMatrix(), render_underwater, resolve_uniforms);
 
             //
-            // Pass 4.1: render cubemap into underwater texture
+            // Pass 6.1: render cubemap into underwater texture
             //
             auto const cubemap_uniforms = [this](GLuint program) {
                 glUniform3fv(glGetUniformLocation(program, "camera_position"), 1,
@@ -889,7 +893,7 @@ project::Project::run()
             glCullFace(GL_BACK);
 
             //
-            // Pass ?.?? Render reflection
+            // Pass 7.0: Render reflected scene
             //
             // reflect camera about water plane
             glm::vec3 p0 = glm::vec3(0.0f, constant::MAMSL * constant::scale_lengths, 0.0f);
@@ -945,6 +949,9 @@ project::Project::run()
             for (auto const& element : solids)
                 element.render(reflectedLightMatrix, element.get_transform().GetMatrix(), render_underwater, resolve_reflected_uniforms);
 
+            //
+            // Pass 7.1: Render reflected cubemap
+            //
             auto const cubemap_reflected_uniforms = [this, &mirroredCpos](GLuint program) {
                 glUniform3fv(glGetUniformLocation(program, "camera_position"), 1,
                     glm::value_ptr(mirroredCpos));
@@ -955,22 +962,21 @@ project::Project::run()
             glCullFace(GL_BACK);
 
             //
-            //  Pass 5: Render final scene
+            // Pass 8.0: render cubemap
             //
             glBindFramebuffer(GL_FRAMEBUFFER, 0);
             glViewport(0, 0, framebuffer_width, framebuffer_height);
             glClear(GL_DEPTH_BUFFER_BIT | GL_COLOR_BUFFER_BIT);
 
 
-            //
-            // Pass 5: render cubemap
-            //
             glCullFace(GL_FRONT);
             GLStateInspection::CaptureSnapshot("Cubemap Pass");
             cube.render(mCamera.GetWorldToClipMatrix(), glm::mat4(1.0f), render_cubemap, cubemap_uniforms);
             glCullFace(GL_BACK);
 
-            // Over water
+            //
+            // Pass 8.1: render overwater scene
+            //
             glUseProgram(render_overwater);
             bind_texture_with_sampler(GL_TEXTURE_2D, 5, render_overwater, "shadow_texture", shadowmap_texture, shadow_sampler);
             bind_texture_with_sampler(GL_TEXTURE_2D, 6, render_overwater, "causticmap_texture", causticmap_texture, caustics_sampler);
@@ -979,12 +985,11 @@ project::Project::run()
             for (auto const& element : solids)
                 element.render(mCamera.GetWorldToClipMatrix(), element.get_transform().GetMatrix(), render_overwater, resolve_uniforms);
 
-            //
-            // Pass 6.1: render water
-            //
             GLStateInspection::CaptureSnapshot("Water Pass");
 
-
+            //
+            // Pass 8.1: render underwater scene
+            //
             glUseProgram(render_underwater);
             bind_texture_with_sampler(GL_TEXTURE_2D, 5, render_underwater, "shadow_texture", shadowmap_texture, shadow_sampler);
             bind_texture_with_sampler(GL_TEXTURE_2D, 6, render_underwater, "causticmap_texture", causticmap_texture, caustics_sampler);
@@ -1000,6 +1005,9 @@ project::Project::run()
             bind_texture_with_sampler(GL_TEXTURE_2D, 8, render_water, "underwater_depth_texture", depth_texture, depth_sampler);
             bind_texture_with_sampler(GL_TEXTURE_2D, 8, render_water, "reflection_texture", reflection_texture, default_sampler);
 
+            //
+            // Pass 8.2: render water
+            //
             glCullFace(GL_FRONT);
             for (auto const& element : transparents)
                 element.render(mCamera.GetWorldToClipMatrix(), element.get_transform().GetMatrix(), render_water, resolve_uniforms);
@@ -1025,7 +1033,7 @@ project::Project::run()
 
         glBindFramebuffer(GL_FRAMEBUFFER, 0u);
         //
-        // Pass 5: Draw wireframe cones on top of the final image for debugging purposes
+        // Pass 9: Draw wireframe cones on top of the final image for debugging purposes
         //
         glDisable(GL_CULL_FACE);
         if (show_cone_wireframe) {
