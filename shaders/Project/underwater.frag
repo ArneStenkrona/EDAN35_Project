@@ -60,7 +60,7 @@ layout (location = 0) out vec4 underwater_scene;
 
 void main()
 {   
-    vec4 lightPos = shadow_view_projection * fs_in.worldPos;
+    vec4 lightPos = shadow_view_projection * (fs_in.worldPos + 0.01 * vec4(fs_in.normal,0.));
     lightPos = lightPos / lightPos.w;
     vec2 light_coord = (lightPos).xy * 0.5 + 0.5;
 
