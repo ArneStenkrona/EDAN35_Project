@@ -1,21 +1,8 @@
-COMMENTS:
+# Project in High Performance Computer Graphics EDAN35
 
-Deffered fungerar ju inte med alpha då man sätter ett värde per pixel
+This is an implementation of realtime water caustics and reflection.
 
-Vi måste fixa pipeline så det är:
+It is based on the technique outlined by Martin Renou, who kindly provides instructions and source code for reference online.
 
-1. Rendera allt förutom vatten
-2. Bygg enviornment map & shadowmap
-3. Bygg scenen med caustics map
-4. Rendera scenen igen med vatten där man samplar från:
-    a) caustics map för under vatten caustics
-    b) shadowmap för shadows
-    c) diffuse map för alpha blending mellan vatten,
-        reflection, och refraction
-
-        
-ISSUE: on webGL we can see behind the ball in the refraction.
-    This is probably because the rendered image is just rendered
-    from the light PoV and then transformed.
-
-
+[Link to Martin Renous medium article](https://medium.com/@martinRenou/real-time-rendering-of-water-caustics-59cda1d74aa)
+[Link to Martin Renous repository](https://github.com/martinRenou/threejs-caustics)
