@@ -60,7 +60,7 @@ void main()
 
         // sample relfection based on wave heuristic
         vec2 refUV = gl_FragCoord.xy * inv_res;
-        reflectedColor = texture2D(reflection_texture, vec2(1 - refUV.x, refUV.y) + fs_in.waveHeight * normalize(fs_in.projectedReflected.xy)).rgb;
+        reflectedColor = texture2D(reflection_texture, vec2(1 - refUV.x, refUV.y) + fs_in.waveHeight * fs_in.projectedReflected.xy).rgb;
 
         // sample from cubemap
         refractedColor.r = texture(cubemap_texture, fs_in.refractedDir[0]).r;
