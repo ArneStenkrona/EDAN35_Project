@@ -893,7 +893,36 @@ project::Project::run()
             glm::vec3 mirroredCDir = glm::reflect(mCamera.mWorld.GetFront(), pN);
             glm::vec3 mirroredCUp = glm::reflect(mCamera.mWorld.GetUp(), pN);
 
+
             glm::mat4 reflectedLightMatrix = mCamera.GetViewToClipMatrix() * glm::lookAt(mirroredCpos, mirroredCpos + mirroredCDir, mirroredCUp);
+
+            auto const resolve_reflected_uniforms = [&sunColor, &sunDir, &seconds_nb, this, &light_matrix, &framebuffer_width, &framebuffer_height, &isInWater, &mirroredCpos, &reflectedLightMatrix](GLuint program) {
+                // COMMON
+                glUniformMatrix4fv(glGetUniformLocation(program, "view_projection_inverse"), 1, GL_FALSE,
+                    glm::value_ptr(glm::inverse(reflectedLightMatrix)));
+                glUniform3fv(glGetUniformLocation(program, "camera_position"), 1,
+                    glm::value_ptr(mirroredCpos));
+                glUniformMatrix4fv(glGetUniformLocation(program, "shadow_view_projection"), 1, GL_FALSE,
+                    glm::value_ptr(light_matrix));
+                glUniform3fv(glGetUniformLocation(program, "sun_dir"), 1,
+                    glm::value_ptr(sunDir));
+                glUniform2f(glGetUniformLocation(program, "shadowmap_texel_size"),
+                    1.0f / static_cast<float>(constant::light_texture_res_x),
+                    1.0f / static_cast<float>(constant::light_texture_res_y));
+                glUniform2f(glGetUniformLocation(program, "inv_res"),
+                    1.0f / static_cast<float>(framebuffer_width),
+                    1.0f / static_cast<float>(framebuffer_height));
+                glUniform3fv(glGetUniformLocation(program, "atmosphereColour"), 1,
+                    glm::value_ptr(constant::atmosphereColour));
+                glUniform3fv(glGetUniformLocation(program, "underwaterColour"), 1,
+                    glm::value_ptr(constant::underwaterColour));
+                glUniform1f(glGetUniformLocation(program, "MAMSL"),
+                    constant::MAMSL);
+                glUniform1f(glGetUniformLocation(program, "t"),
+                    seconds_nb);
+                glUniform1i(glGetUniformLocation(program, "IN_WATER"),
+                    isInWater ? GL_TRUE : GL_FALSE);
+            };
 
             glBindFramebuffer(GL_FRAMEBUFFER, reflection_fbo);
             GLenum const reflection_draw_buffers[1] = { GL_COLOR_ATTACHMENT0 };
@@ -906,10 +935,15 @@ project::Project::run()
             glClear(GL_DEPTH_BUFFER_BIT | GL_COLOR_BUFFER_BIT);
 
             for (auto const& element : solids)
-                element.render(reflectedLightMatrix, element.get_transform().GetMatrix(), render_underwater, resolve_uniforms);
+                element.render(reflectedLightMatrix, element.get_transform().GetMatrix(), render_underwater, resolve_reflected_uniforms);
+
+            auto const cubemap_reflected_uniforms = [this, &mirroredCpos](GLuint program) {
+                glUniform3fv(glGetUniformLocation(program, "camera_position"), 1,
+                    glm::value_ptr(mirroredCpos));
+            };
 
             glCullFace(GL_FRONT);
-            cube.render(reflectedLightMatrix, glm::mat4(1.0f), render_cubemap, cubemap_uniforms);
+            cube.render(reflectedLightMatrix, glm::mat4(1.0f), render_cubemap, cubemap_reflected_uniforms);
             glCullFace(GL_BACK);
 
             //
